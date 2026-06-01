@@ -509,14 +509,13 @@ function applyFilter() {
   let vis = 0;
   rows.forEach(r => {
     const adv = r.dataset.adv.toLowerCase();
-    const tv = r.dataset.tv==='1', yt = r.dataset.yt==='1', meta = r.dataset.meta==='1';
+    const tv = r.dataset.tv==='1', yt = r.dataset.yt==='1';
     let show = adv.includes(q);
     if (show && pod !== 'all') show = r.dataset.pod === pod;
     if (show && vertical !== 'all') show = r.dataset.vertical === vertical;
     if (show && currentFilter === 'tv') show = tv;
     if (show && currentFilter === 'yt') show = yt;
-    if (show && currentFilter === 'meta') show = meta;
-    if (show && currentFilter === 'none') show = !tv && !yt && !meta;
+    if (show && currentFilter === 'none') show = !tv && !yt;
     r.classList.toggle('hidden', !show);
     if (show) vis++;
   });
@@ -535,27 +534,27 @@ function renderStats(year, month) {
     document.getElementById('statsBar').innerHTML = `
       <div class="stat" style="flex:5;text-align:center;color:#b45309;background:#fef9ee;border-color:#fbbf24">
         <div class="stat-label" style="color:#b45309">⚠ 크롤링 전</div>
-        <div style="font-size:12px;margin-top:4px">실제 집행 데이터가 없습니다. 크롤러를 실행하면 TV·유튜브·Meta 집행 현황이 표시됩니다.</div>
+        <div style="font-size:12px;margin-top:4px">실제 집행 데이터가 없습니다. 크롤러를 실행하면 TV·유튜브 집행 현황이 표시됩니다.</div>
       </div>`;
     return;
   }
-  let tv=0,yt=0,meta=0,all3=0,none=0;
+  let tv=0,yt=0,both=0,none=0;
   RAW.forEach(([adv]) => {
     const rk = `${year}_${month}`;
     const d = REAL_PERIODS[adv] && REAL_PERIODS[adv][rk]
       ? REAL_PERIODS[adv][rk]
-      : {tv:[],yt:[],meta:[]};
-    const t=d.tv.length>0, y=d.yt.length>0, m=d.meta.length>0;
-    if(t)tv++;if(y)yt++;if(m)meta++;
-    if(t&&y&&m)all3++;if(!t&&!y&&!m)none++;
+      : {tv:[],yt:[]};
+    const t=d.tv.length>0, y=d.yt.length>0;
+    if(t)tv++; if(y)yt++;
+    if(t&&y)both++;
+    if(!t&&!y)none++;
   });
   const total = RAW.length;
   document.getElementById('statsBar').innerHTML = `
     <div class="stat"><div class="stat-label">TV/케이블</div><div class="stat-n c-tv">${tv}</div><div class="stat-sub">${total}개사 중 ${Math.round(tv/total*100)}%</div></div>
     <div class="stat"><div class="stat-label">유튜브</div><div class="stat-n c-yt">${yt}</div><div class="stat-sub">${total}개사 중 ${Math.round(yt/total*100)}%</div></div>
-    <div class="stat"><div class="stat-label">Meta</div><div class="stat-n c-meta">${meta}</div><div class="stat-sub">${total}개사 중 ${Math.round(meta/total*100)}%</div></div>
-    <div class="stat"><div class="stat-label">3매체 동시</div><div class="stat-n c-accent">${all3}</div><div class="stat-sub">TV+YT+Meta 모두</div></div>
-    <div class="stat"><div class="stat-label">미집행</div><div class="stat-n" style="color:#bbb">${none}</div><div class="stat-sub">3매체 모두 없음</div></div>
+    <div class="stat"><div class="stat-label">2매체 동시</div><div class="stat-n c-accent">${both}</div><div class="stat-sub">TV + 유튜브 모두</div></div>
+    <div class="stat"><div class="stat-label">미집행</div><div class="stat-n" style="color:#bbb">${none}</div><div class="stat-sub">TV·유튜브 모두 없음</div></div>
   `;
 }
 
