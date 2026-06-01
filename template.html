@@ -442,13 +442,16 @@ function fmtPeriods(periods, month) {
 }
 
 function mediaPill(key, pillCls, dotCls, periods, month, adv, rk) {
-  const str = fmtPeriods(periods, month);
-  if (str) {
+  // 실 데이터 있으면 기간 표시
+  if (hasRealData && periods && periods.length > 0) {
+    const str = fmtPeriods(periods, month);
     return `<span class="pill pill-${pillCls}"><span class="pdot pdot-${dotCls}"></span>${str}</span>`;
   }
+  // 크롤 안 된 상태 → 미확인
   if (!hasRealData) {
-    return `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`;
+    return `<span class="pill pill-unknown" title="크롤링 전 — 샘플 데이터 없음">⚠ 미확인</span>`;
   }
+  // 크롤됐지만 광고 없음 vs 크롤 실패
   const cov = CRAWL_COVERAGE[adv] && CRAWL_COVERAGE[adv][rk] && CRAWL_COVERAGE[adv][rk][key];
   if (cov) {
     return `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`;
@@ -532,9 +535,20 @@ function setChip(el) {
 }
 
 function renderStats(year, month) {
+  if (!hasRealData) {
+    document.getElementById('statsBar').innerHTML = `
+      <div class="stat" style="flex:5;text-align:center;color:#b45309;background:#fef9ee;border-color:#fbbf24">
+        <div class="stat-label" style="color:#b45309">⚠ 크롤링 전</div>
+        <div style="font-size:12px;margin-top:4px">실제 집행 데이터가 없습니다. 크롤러를 실행하면 TV·유튜브·Meta 집행 현황이 표시됩니다.</div>
+      </div>`;
+    return;
+  }
   let tv=0,yt=0,meta=0,all3=0,none=0;
   RAW.forEach(([adv]) => {
-    const d = getData(adv, year, month);
+    const rk = `${year}_${month}`;
+    const d = REAL_PERIODS[adv] && REAL_PERIODS[adv][rk]
+      ? REAL_PERIODS[adv][rk]
+      : {tv:[],yt:[],meta:[]};
     const t=d.tv.length>0, y=d.yt.length>0, m=d.meta.length>0;
     if(t)tv++;if(y)yt++;if(m)meta++;
     if(t&&y&&m)all3++;if(!t&&!y&&!m)none++;
