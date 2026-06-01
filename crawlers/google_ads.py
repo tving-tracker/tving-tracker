@@ -1,145 +1,181 @@
-"""Google Ads Transparency crawler — 유튜브 집행 기간 수집"""
+"""Google Ads Transparency Playwright 크롤러 - 유튜브 집행 기간"""
+import re
 import time
 import logging
 import calendar
-from datetime import datetime
+from datetime import date
 
-import requests
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Referer": "https://adstransparency.google.com/",
-    "x-goog-authuser": "0",
-}
-
-# Unofficial API used by the Ads Transparency web app
-SEARCH_URL = "https://adstransparency.google.com/anji/_/rpc/AdsTransparencyService/SearchAds"
-ADVERTISER_URL = "https://adstransparency.google.com/anji/_/rpc/AdsTransparencyService/SearchAdvertisers"
+TRANSPARENCY_URL = "https://adstransparency.google.com/?region=KR"
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
 
 class GoogleAdsCrawler:
-    def __init__(self, delay: float = 2.0):
-        self.session = requests.Session()
-        self.session.headers.update(HEADERS)
+    def __init__(self, delay: float = 2.0, headless: bool = True):
         self.delay = delay
+        self.headless = headless
 
     def crawl(self, advertisers: list[str], year: int, month: int) -> dict:
-        """
-        Returns: { advertiser: [{"s": int, "e": int}, ...] }
-        """
+        """month: 0-indexed. Returns {advertiser: [{s,e}, ...]}"""
+        target_month = month + 1
+        days_in_month = calendar.monthrange(year, target_month)[1]
+        date_from = f"{year}-{target_month:02d}-01"
+        date_to   = f"{year}-{target_month:02d}-{days_in_month:02d}"
+
         results = {}
-        for adv in advertisers:
-            try:
-                periods = self._crawl_advertiser(adv, year, month)
-                if periods:
-                    results[adv] = periods
-                    logger.info(f"Google {adv}: {len(periods)} 기간")
-                time.sleep(self.delay)
-            except Exception as e:
-                logger.warning(f"Google {adv} 실패: {e}")
+
+        with sync_playwright() as p:
+            br = p.chromium.launch(headless=self.headless)
+            ctx = br.new_context(locale="ko-KR", user_agent=UA)
+
+            for adv in advertisers:
+                try:
+                    periods = self._crawl_one(ctx, adv, year, target_month,
+                                              days_in_month, date_from, date_to)
+                    if periods:
+                        results[adv] = periods
+                        logger.info(f"Google Ads {adv}: {periods}")
+                    time.sleep(self.delay)
+                except Exception as e:
+                    logger.warning(f"Google Ads {adv}: {e}")
+
+            br.close()
+
         return results
 
-    def _crawl_advertiser(self, advertiser: str, year: int, month: int) -> list[dict]:
-        # Step 1: Find advertiser ID
-        adv_id = self._find_advertiser_id(advertiser)
-        if not adv_id:
-            return []
-
-        # Step 2: Get ads for target month
-        return self._get_ads_for_month(adv_id, year, month)
-
-    def _find_advertiser_id(self, name: str) -> str | None:
-        """Search for advertiser and return their ID."""
+    def _crawl_one(self, ctx, advertiser: str, year: int, month: int,
+                   days_in_month: int, date_from: str, date_to: str) -> list[dict]:
+        page = ctx.new_page()
         try:
-            payload = {
-                "1": name,       # search query
-                "2": "KR",       # country
-                "3": 1,          # page token
-            }
-            resp = self.session.post(
-                ADVERTISER_URL,
-                json=payload,
-                timeout=10,
-            )
-            if resp.status_code != 200:
-                return None
-            data = resp.json()
-            # Response structure varies; try common paths
-            advertisers = (
-                data.get("1", {}).get("1", []) or
-                data.get("advertisers", []) or
-                []
-            )
-            for a in advertisers[:5]:
-                adv_name = a.get("2", "") or a.get("name", "")
-                if name[:4] in adv_name:
-                    return str(a.get("1", "") or a.get("id", ""))
-        except Exception as e:
-            logger.debug(f"Google find_advertiser {name}: {e}")
-        return None
+            page.goto(TRANSPARENCY_URL, wait_until="networkidle", timeout=20000)
 
-    def _get_ads_for_month(self, adv_id: str, year: int, month: int) -> list[dict]:
-        """Get active ad periods for advertiser in given month (0-indexed)."""
-        target_month = month + 1  # convert to 1-indexed
-        days_in_month = calendar.monthrange(year, target_month)[1]
+            # 검색
+            search = page.locator("input").first
+            search.fill(advertiser)
+            page.wait_for_timeout(1500)
 
-        start_date = f"{year}-{target_month:02d}-01"
-        end_date = f"{year}-{target_month:02d}-{days_in_month:02d}"
+            # 첫 번째 광고주 클릭 (exact match 우선, 없으면 첫 번째)
+            clicked = False
+            try:
+                # 광고주 이름이 텍스트로 들어있는 MATERIAL-SELECT-ITEM 클릭
+                items = page.locator("material-select-item").all()
+                if items:
+                    # 가장 비슷한 이름 찾기
+                    best = items[0]
+                    for item in items[:5]:
+                        txt = item.inner_text()
+                        # 공백/특수문자 제거 후 비교
+                        clean_adv = re.sub(r'[\s\(\)\.,]', '', advertiser)
+                        clean_txt = re.sub(r'[\s\(\)\.,]', '', txt)
+                        if clean_adv in clean_txt or clean_txt.startswith(clean_adv[:4]):
+                            best = item
+                            break
+                    best.click()
+                    clicked = True
+            except Exception:
+                pass
 
-        try:
-            payload = {
-                "1": adv_id,
-                "2": "KR",
-                "3": {"1": start_date, "2": end_date},
-                "4": "YOUTUBE",  # platform filter
-            }
-            resp = self.session.post(SEARCH_URL, json=payload, timeout=15)
-            if resp.status_code != 200:
+            if not clicked:
+                # fallback: text 클릭
+                try:
+                    page.click(f"text={advertiser[:5]}", timeout=3000)
+                    clicked = True
+                except Exception:
+                    pass
+
+            if not clicked:
+                page.close()
                 return []
 
-            data = resp.json()
-            ads = data.get("1", []) or data.get("ads", [])
-            return _parse_ad_periods(ads, year, target_month, days_in_month)
+            page.wait_for_timeout(2000)
+
+            # 날짜 필터 설정
+            self._set_date_filter(page, date_from, date_to)
+            page.wait_for_timeout(2000)
+
+            # 광고 수 확인
+            body_text = page.inner_text("body")
+            ad_count = _extract_ad_count(body_text)
+
+            if ad_count == 0:
+                page.close()
+                return []
+
+            # 광고가 있으면 날짜 기간 추출 시도
+            periods = _extract_periods_from_page(page, year, month, days_in_month)
+            if not periods:
+                # 날짜 추출 실패해도 활성으로 간주 (전체 월로 기록)
+                periods = [{"s": 1, "e": days_in_month}]
+
+            page.close()
+            return periods
+
         except Exception as e:
-            logger.debug(f"Google get_ads {adv_id}: {e}")
+            logger.debug(f"Google _crawl_one {advertiser}: {e}")
+            page.close()
             return []
 
+    def _set_date_filter(self, page, date_from: str, date_to: str):
+        """날짜 필터를 특정 월로 설정"""
+        try:
+            # "전체 기간" 버튼 클릭
+            page.click("text=전체 기간", timeout=5000)
+            page.wait_for_timeout(1000)
 
-def _parse_ad_periods(ads: list, year: int, month: int, days_in_month: int) -> list[dict]:
-    """Extract and merge run periods from ad objects."""
+            # URL 파라미터 방식 시도
+            cur_url = page.url
+            if "?" in cur_url:
+                new_url = cur_url + f"&start_date={date_from}&end_date={date_to}"
+            else:
+                new_url = cur_url + f"?start_date={date_from}&end_date={date_to}"
+            page.goto(new_url, wait_until="networkidle", timeout=15000)
+            page.wait_for_timeout(1500)
+
+        except Exception as e:
+            logger.debug(f"날짜 필터 설정 실패: {e}")
+
+
+def _extract_ad_count(text: str) -> int:
+    """페이지 텍스트에서 광고 개수 추출"""
+    # "광고 약 X만개" or "광고 X개"
+    m = re.search(r'광고\s*(?:약\s*)?([\d.]+)(만)?개', text)
+    if m:
+        n = float(m.group(1))
+        if m.group(2) == '만':
+            n *= 10000
+        return int(n)
+    # 광고 카드 수 - 최소한 텍스트가 있으면 활성
+    if '인증' in text or 'videocam' in text:
+        return 1
+    return 0
+
+
+def _extract_periods_from_page(page, year: int, month: int,
+                                days_in_month: int) -> list[dict]:
+    """광고 페이지에서 날짜 패턴 추출"""
+    text = page.inner_text("body")
+    month_start = date(year, month, 1)
+    month_end   = date(year, month, days_in_month)
+
     days_active = set()
 
-    for ad in ads:
-        # Try various date field paths from the unofficial API
-        start_str = (
-            ad.get("start_date") or
-            ad.get("3", {}).get("1") or
-            ""
-        )
-        end_str = (
-            ad.get("end_date") or
-            ad.get("3", {}).get("2") or
-            ""
-        )
-
-        try:
-            s = datetime.strptime(start_str, "%Y-%m-%d") if start_str else None
-            e = datetime.strptime(end_str, "%Y-%m-%d") if end_str else None
-        except ValueError:
-            continue
-
-        if s and e:
-            cur = s
-            while cur <= e:
-                if cur.year == year and cur.month == month:
-                    days_active.add(cur.day)
-                cur = cur.replace(day=cur.day + 1) if cur.day < days_in_month else \
-                    cur.replace(month=cur.month + 1, day=1) if cur.month < 12 else \
-                    cur.replace(year=cur.year + 1, month=1, day=1)
+    # 날짜 패턴 탐색 (YYYY년 MM월 DD일 형식 등)
+    patterns = [
+        r'(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일',
+        r'(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})',
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            try:
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if y == year and mo == month and 1 <= d <= days_in_month:
+                    days_active.add(d)
+            except (ValueError, IndexError):
+                pass
 
     if not days_active:
         return []
@@ -150,15 +186,12 @@ def _parse_ad_periods(ads: list, year: int, month: int, days_in_month: int) -> l
 def _days_to_periods(days: list[int]) -> list[dict]:
     if not days:
         return []
-    periods = []
-    start = days[0]
-    prev = days[0]
+    periods, start, prev = [], days[0], days[0]
     for d in days[1:]:
         if d <= prev + 2:
             prev = d
         else:
             periods.append({"s": start, "e": prev})
-            start = d
-            prev = d
+            start = prev = d
     periods.append({"s": start, "e": prev})
     return periods

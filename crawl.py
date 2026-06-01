@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 import db
-from crawlers import TvcfCrawler, GoogleAdsCrawler, MetaAdsCrawler
+from crawlers import TvcfCrawler, GoogleAdsCrawler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,28 +101,6 @@ def run_all(year: int = None, month: int = None, platforms: list[str] = None) ->
             db.log_crawl("youtube", "error", message=str(e))
             logger.error(f"Google Ads 오류: {e}")
 
-    # ── Meta Ad Library ───────────────────────────────────────────────────────
-    if "meta" in platforms:
-        logger.info(f"Meta 크롤링 시작: {year}년 {month_1indexed}월")
-        try:
-            crawler = MetaAdsCrawler()
-            if not crawler.available:
-                logger.warning("META_ACCESS_TOKEN 없음 — Meta 크롤링 건너뜀")
-            else:
-                results = crawler.crawl(ADVERTISERS, year, month_0indexed)
-                count = 0
-                for adv in ADVERTISERS:
-                    db.mark_crawled(adv, "meta", year, month_0indexed, crawled_at)
-                for adv, periods in results.items():
-                    db.upsert_periods(adv, "meta", year, month_0indexed, periods, crawled_at)
-                    count += len(periods)
-                db.log_crawl("meta", "ok", count)
-                total += count
-                logger.info(f"Meta 완료: {count}건")
-        except Exception as e:
-            db.log_crawl("meta", "error", message=str(e))
-            logger.error(f"Meta 오류: {e}")
-
     logger.info(f"전체 크롤링 완료: {total}건 저장")
     return total
 
@@ -131,8 +109,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TVING 광고 크롤러")
     parser.add_argument("--year", type=int, default=None)
     parser.add_argument("--month", type=int, default=None, help="1-12")
-    parser.add_argument("--platforms", type=str, default="tv,yt,meta",
-                        help="tv,yt,meta (쉼표 구분)")
+    parser.add_argument("--platforms", type=str, default="tv,yt",
+                        help="tv,yt (쉼표 구분)")
     args = parser.parse_args()
 
     platforms = [p.strip() for p in args.platforms.split(",")]

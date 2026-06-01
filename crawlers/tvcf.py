@@ -1,133 +1,150 @@
-"""TVCF (tvcf.co.kr) crawler — TV/케이블 집행 기간 수집"""
+"""TVCF (tvcf.co.kr) Playwright 크롤러 - TV/케이블 집행 기간"""
 import re
 import time
 import logging
-from datetime import datetime, date
+import calendar
+from datetime import date
 from urllib.parse import quote
 
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 logger = logging.getLogger(__name__)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-    "Accept-Language": "ko-KR,ko;q=0.9",
-    "Referer": "https://tvcf.co.kr/",
-}
-BASE = "https://tvcf.co.kr"
-SEARCH_URL = BASE + "/s/?q={query}&type=3"  # type=3: 광고주 검색
+SEARCH_URL = (
+    "https://tvcf.co.kr/worked/video"
+    "?search_term={query}&mediaType_value=1"
+    "&page={page}&rows=50&sort_by=registrated_date"
+    "&country_code_value=410&lang=ko"
+)
+UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
 
 class TvcfCrawler:
-    def __init__(self, delay: float = 1.5):
-        self.session = requests.Session()
-        self.session.headers.update(HEADERS)
+    def __init__(self, delay: float = 1.0, headless: bool = True):
         self.delay = delay
+        self.headless = headless
 
     def crawl(self, advertisers: list[str], year: int, month: int) -> dict:
-        """
-        Returns: { advertiser: [{"s": int, "e": int}, ...] }
-        month is 0-indexed (JS style)
-        """
+        """month: 0-indexed (JS style). Returns {advertiser: [{s,e}, ...]}"""
+        target_month = month + 1  # 1-indexed
         results = {}
-        target_month = month + 1  # 1-indexed for comparison
 
-        for adv in advertisers:
-            try:
-                periods = self._crawl_advertiser(adv, year, target_month)
-                if periods:
-                    results[adv] = periods
-                    logger.info(f"TVCF {adv}: {len(periods)} 기간")
-                time.sleep(self.delay)
-            except Exception as e:
-                logger.warning(f"TVCF {adv} 실패: {e}")
+        with sync_playwright() as p:
+            br = p.chromium.launch(headless=self.headless)
+            ctx = br.new_context(locale="ko-KR", user_agent=UA)
+
+            for adv in advertisers:
+                try:
+                    periods = self._crawl_one(ctx, adv, year, target_month)
+                    if periods:
+                        results[adv] = periods
+                        logger.info(f"TVCF {adv}: {periods}")
+                    time.sleep(self.delay)
+                except Exception as e:
+                    logger.warning(f"TVCF {adv}: {e}")
+
+            br.close()
 
         return results
 
-    def _crawl_advertiser(self, advertiser: str, year: int, month: int) -> list[dict]:
-        """Search TVCF for advertiser and extract TV air periods."""
-        url = SEARCH_URL.format(query=quote(advertiser))
-        resp = self.session.get(url, timeout=10)
-        if resp.status_code != 200:
-            return []
+    def _crawl_one(self, ctx, advertiser: str, year: int, month: int) -> list[dict]:
+        page = ctx.new_page()
+        all_periods: list[dict] = []
 
-        soup = BeautifulSoup(resp.text, "html.parser")
+        try:
+            for pg_num in [1, 2]:  # 최대 2페이지 (100개)
+                url = SEARCH_URL.format(query=quote(advertiser), page=pg_num)
+                page.goto(url, wait_until="networkidle", timeout=20000)
+                page.wait_for_timeout(2000)
 
-        # Find advertiser links in search results
-        adv_links = []
-        for a in soup.select("a[href*='/b/']"):
-            if advertiser[:3] in (a.get_text() or ""):
-                adv_links.append(BASE + a["href"])
+                # /play/ 링크 텍스트에서 날짜 추출
+                cards = page.eval_on_selector_all(
+                    "a[href*='/play/']",
+                    "els => els.map(e=>e.innerText.trim())"
+                )
 
-        if not adv_links:
-            # Try direct brand page
-            adv_links = [BASE + f"/b/{quote(advertiser)}/"]
+                found = False
+                for text in cards:
+                    periods = _parse_card_dates(text, year, month)
+                    all_periods.extend(periods)
+                    if periods:
+                        found = True
 
-        periods = []
-        seen = set()
+                if not found and pg_num == 1:
+                    break  # 1페이지에 해당 월 결과 없으면 종료
+        finally:
+            page.close()
 
-        for link in adv_links[:3]:  # Check top 3 matches
-            try:
-                p = self._extract_periods_from_page(link, year, month)
-                for period in p:
-                    key = (period["s"], period["e"])
-                    if key not in seen:
-                        seen.add(key)
-                        periods.append(period)
-            except Exception as e:
-                logger.debug(f"TVCF page error {link}: {e}")
-
-        return periods
-
-    def _extract_periods_from_page(self, url: str, year: int, month: int) -> list[dict]:
-        """Extract air date periods from a TVCF brand page."""
-        resp = self.session.get(url, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        periods = []
-        date_pattern = re.compile(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})")
-
-        # TVCF shows dates in various formats; collect all date mentions
-        date_texts = []
-        for elem in soup.select(".adlist-info, .ad-date, .date, time, [class*='date']"):
-            date_texts.append(elem.get_text())
-
-        # Also scan full page text for date patterns in target month
-        full_text = soup.get_text()
-        for m in date_pattern.finditer(full_text):
-            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-            if y == year and mo == month:
-                date_texts.append(f"{y}.{mo}.{d}")
-
-        # Build periods from found dates
-        days_found = set()
-        for text in date_texts:
-            for m in date_pattern.finditer(text):
-                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-                if y == year and mo == month and 1 <= d <= 31:
-                    days_found.add(d)
-
-        if days_found:
-            periods = _days_to_periods(sorted(days_found))
-
-        return periods
+        return _merge_periods(all_periods)
 
 
-def _days_to_periods(days: list[int]) -> list[dict]:
-    """Convert a list of days to contiguous periods [{s, e}, ...]"""
-    if not days:
+# ── 날짜 파싱 헬퍼 ────────────────────────────────────────────────────────────
+
+def _parse_card_dates(card_text: str, year: int, target_month: int) -> list[dict]:
+    """
+    카드 텍스트에서 날짜 추출.
+    형식: "MM.DD\n(MM.DD)" 또는 "YYYY.MM.DD"
+    첫 번째 날짜 = 방영 시작, 두 번째 날짜 = 방영 종료(또는 마지막 확인일)
+    """
+    days_in_month = calendar.monthrange(year, target_month)[1]
+    month_start = date(year, target_month, 1)
+    month_end   = date(year, target_month, days_in_month)
+
+    # YYYY.MM.DD 형식 먼저 시도 (과거 CF)
+    full = re.findall(r'(\d{4})\.(\d{2})\.(\d{2})', card_text)
+    if full:
+        try:
+            s = date(int(full[0][0]), int(full[0][1]), int(full[0][2]))
+            e = date(int(full[-1][0]), int(full[-1][1]), int(full[-1][2])) if len(full) > 1 else s
+            return _clip(s, e, month_start, month_end)
+        except ValueError:
+            pass
+
+    # MM.DD 형식
+    short = re.findall(r'(\d{2})\.(\d{2})', card_text)
+    if not short:
         return []
-    periods = []
-    start = days[0]
-    prev = days[0]
-    for d in days[1:]:
-        if d <= prev + 2:  # allow 1-day gaps
-            prev = d
+
+    try:
+        sm, sd = int(short[0][0]), int(short[0][1])
+        em, ed = int(short[-1][0]), int(short[-1][1])
+
+        # 연도 추론: month가 1이고 날짜가 12월이면 전년도 가능
+        s_year = year if sm <= 12 else year - 1
+        e_year = year if em <= 12 else year - 1
+
+        # 시작이 종료보다 늦으면 (연말→연초 크로스)
+        if sm > em and abs(sm - em) > 6:
+            e_year = year + 1
+
+        s = date(s_year, sm, sd)
+        e = date(e_year, em, ed)
+        if s > e:
+            e = s
+
+        return _clip(s, e, month_start, month_end)
+    except (ValueError, OverflowError):
+        return []
+
+
+def _clip(s: date, e: date, month_start: date, month_end: date) -> list[dict]:
+    actual_s = max(s, month_start)
+    actual_e = min(e, month_end)
+    if actual_s <= actual_e:
+        return [{"s": actual_s.day, "e": actual_e.day}]
+    return []
+
+
+def _merge_periods(periods: list[dict]) -> list[dict]:
+    """겹치는/인접한 기간 병합"""
+    if not periods:
+        return []
+    sorted_p = sorted(periods, key=lambda x: x["s"])
+    merged = [sorted_p[0].copy()]
+    for p in sorted_p[1:]:
+        if p["s"] <= merged[-1]["e"] + 1:
+            merged[-1]["e"] = max(merged[-1]["e"], p["e"])
         else:
-            periods.append({"s": start, "e": prev})
-            start = d
-            prev = d
-    periods.append({"s": start, "e": prev})
-    return periods
+            merged.append(p.copy())
+    return merged
