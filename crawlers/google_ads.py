@@ -5,7 +5,7 @@
 import re
 import logging
 import calendar
-from datetime import date
+from datetime import date, datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -129,7 +129,13 @@ def _crawl_one(ctx, advertiser: str, year: int,
 
         periods = _parse_api_responses(api_data, year, month, days_in_month)
         if not periods:
-            periods = [{"s": 1, "e": days_in_month}]   # 활성 확인됨, 날짜 불명
+            # 활성 확인됨, 날짜 불명 → 오늘까지만 기록 (미래 날짜 방지)
+            today = datetime.now()
+            if year == today.year and month == today.month:
+                last_day = today.day   # 현재 월이면 오늘까지만
+            else:
+                last_day = days_in_month  # 과거 월이면 전체
+            periods = [{"s": 1, "e": last_day}]
 
         page.close()
         return periods
