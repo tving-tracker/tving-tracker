@@ -70,6 +70,8 @@ def run_all(year: int = None, month: int = None, platforms: list[str] = None) ->
             crawler = TvcfCrawler()
             results = crawler.crawl(ADVERTISERS, year, month_0indexed)
             count = 0
+            for adv in ADVERTISERS:
+                db.mark_crawled(adv, "tv", year, month_0indexed, crawled_at)
             for adv, periods in results.items():
                 db.upsert_periods(adv, "tv", year, month_0indexed, periods, crawled_at)
                 count += len(periods)
@@ -87,6 +89,8 @@ def run_all(year: int = None, month: int = None, platforms: list[str] = None) ->
             crawler = GoogleAdsCrawler()
             results = crawler.crawl(ADVERTISERS, year, month_0indexed)
             count = 0
+            for adv in ADVERTISERS:
+                db.mark_crawled(adv, "youtube", year, month_0indexed, crawled_at)
             for adv, periods in results.items():
                 db.upsert_periods(adv, "youtube", year, month_0indexed, periods, crawled_at)
                 count += len(periods)
@@ -107,6 +111,8 @@ def run_all(year: int = None, month: int = None, platforms: list[str] = None) ->
             else:
                 results = crawler.crawl(ADVERTISERS, year, month_0indexed)
                 count = 0
+                for adv in ADVERTISERS:
+                    db.mark_crawled(adv, "meta", year, month_0indexed, crawled_at)
                 for adv, periods in results.items():
                     db.upsert_periods(adv, "meta", year, month_0indexed, periods, crawled_at)
                     count += len(periods)

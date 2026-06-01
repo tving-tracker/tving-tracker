@@ -27,6 +27,14 @@ def init_db():
             crawled_at  TEXT    NOT NULL,
             UNIQUE(advertiser, platform, year, month, start_day, end_day)
         );
+        CREATE TABLE IF NOT EXISTS crawl_coverage (
+            advertiser  TEXT    NOT NULL,
+            platform    TEXT    NOT NULL,
+            year        INTEGER NOT NULL,
+            month       INTEGER NOT NULL,
+            crawled_at  TEXT    NOT NULL,
+            PRIMARY KEY (advertiser, platform, year, month)
+        );
         CREATE TABLE IF NOT EXISTS crawl_log (
             id         INTEGER PRIMARY KEY,
             platform   TEXT,
@@ -36,6 +44,18 @@ def init_db():
             message    TEXT
         );
         """)
+
+
+def mark_crawled(advertiser: str, platform: str, year: int, month: int,
+                 crawled_at: str = None):
+    """Record that this advertiser/platform/month was crawled (even if no ads found)."""
+    ts = crawled_at or datetime.now().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO crawl_coverage
+               (advertiser, platform, year, month, crawled_at) VALUES (?,?,?,?,?)""",
+            (advertiser, platform, year, month, ts)
+        )
 
 
 def upsert_periods(advertiser: str, platform: str, year: int, month: int,
@@ -91,6 +111,26 @@ def get_periods() -> dict:
                 "meta": channels["meta"],
             }
     return result
+
+
+def get_coverage() -> dict:
+    """Return coverage dict for JS injection.
+    Format: { advertiser: { "year_month": { tv:True, youtube:True, meta:False } } }
+    """
+    init_db()
+    try:
+        rows = get_conn().execute(
+            "SELECT advertiser, platform, year, month FROM crawl_coverage"
+        ).fetchall()
+    except Exception:
+        return {}
+
+    out: dict = {}
+    for r in rows:
+        adv = r["advertiser"]
+        key = f"{r['year']}_{r['month']}"
+        out.setdefault(adv, {}).setdefault(key, {})[r["platform"]] = True
+    return out
 
 
 def get_last_crawl() -> str:

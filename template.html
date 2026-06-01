@@ -47,9 +47,7 @@ input[type=text]{width:160px;cursor:text}
 .stat-sub{font-size:10px;color:var(--muted);margin-top:3px}
 .c-tv{color:var(--tv-dot)}.c-yt{color:var(--yt-dot)}.c-meta{color:var(--meta-dot)}.c-accent{color:var(--accent)}
 
-.table-wrap{padding:0 1.5rem 4rem}
-.table-head-wrap{overflow-x:auto;position:sticky;z-index:10;background:var(--bg)}
-.table-body-wrap{overflow-x:auto;padding-bottom:4rem}
+.table-wrap{padding:0 1.5rem 4rem;overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:780px}
 thead th{
   font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;
@@ -73,6 +71,7 @@ td{padding:10px 14px;vertical-align:middle}
 .pill-yt{background:var(--yt-bg);color:var(--yt-text)}
 .pill-meta{background:var(--meta-bg);color:var(--meta-text)}
 .pill-none{background:var(--none-bg);color:var(--none-text)}
+.pill-unknown{background:#fef9ee;color:#b45309;border:1px dashed #fbbf24}
 .pdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
 .pdot-tv{background:var(--tv-dot)}.pdot-yt{background:var(--yt-dot)}.pdot-meta{background:var(--meta-dot)}.pdot-none{background:var(--muted2)}
 
@@ -163,30 +162,24 @@ td{padding:10px 14px;vertical-align:middle}
 <div class="statsbar" id="statsBar"></div>
 
 <div class="table-wrap">
-  <div class="table-head-wrap" id="tableHeadWrap">
-    <table id="headTable">
-      <thead id="thead">
-        <tr>
-          <th style="min-width:130px">광고주</th>
-          <th style="min-width:70px">Pod</th>
-          <th style="min-width:140px">버티컬</th>
-          <th style="min-width:160px">TV / 케이블</th>
-          <th style="min-width:160px">유튜브</th>
-          <th style="min-width:160px">Meta (FB/IG)</th>
-        </tr>
-      </thead>
-    </table>
-  </div>
-  <div class="table-body-wrap" id="tableBodyWrap">
-    <table id="bodyTable">
-      <colgroup>
-        <col style="min-width:130px"><col style="min-width:70px">
-        <col style="min-width:140px"><col style="min-width:160px">
-        <col style="min-width:160px"><col style="min-width:160px">
-      </colgroup>
-      <tbody id="tbody"></tbody>
-    </table>
-  </div>
+  <table id="mainTable">
+    <colgroup>
+      <col style="min-width:130px"><col style="min-width:70px">
+      <col style="min-width:140px"><col style="min-width:160px">
+      <col style="min-width:160px"><col style="min-width:160px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>광고주</th>
+        <th>Pod</th>
+        <th>버티컬</th>
+        <th>TV / 케이블</th>
+        <th>유튜브</th>
+        <th>Meta (FB/IG)</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
 </div>
 
 <div class="overlay" id="overlay" onclick="closePanel()"></div>
@@ -383,6 +376,9 @@ const RAW = [
 // Format: { "광고주명": { "year_month": { tv:[{s,e},...], yt:[...], meta:[...] } } }
 const REAL_PERIODS = {}; // __TVING_PERIODS_PLACEHOLDER__
 const LAST_CRAWLED = ""; // __TVING_LAST_CRAWLED__
+// Coverage: which (advertiser, platform, month) combos were actually crawled
+// Format: { "광고주명": { "year_month": { tv:true, youtube:true, meta:false } } }
+const CRAWL_COVERAGE = {}; // __TVING_COVERAGE_PLACEHOLDER__
 
 // ── VERTICAL CSS MAP ──────────────────────────────────────────────────────────
 const VT_CLS = {
@@ -445,6 +441,21 @@ function fmtPeriods(periods, month) {
   return periods.map(p => p.s === p.e ? `${month+1}/${p.s}` : `${month+1}/${p.s}~${month+1}/${p.e}`).join('  ·  ');
 }
 
+function mediaPill(key, pillCls, dotCls, periods, month, adv, rk) {
+  const str = fmtPeriods(periods, month);
+  if (str) {
+    return `<span class="pill pill-${pillCls}"><span class="pdot pdot-${dotCls}"></span>${str}</span>`;
+  }
+  if (!hasRealData) {
+    return `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`;
+  }
+  const cov = CRAWL_COVERAGE[adv] && CRAWL_COVERAGE[adv][rk] && CRAWL_COVERAGE[adv][rk][key];
+  if (cov) {
+    return `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`;
+  }
+  return `<span class="pill pill-unknown" title="크롤링 실패 또는 미조회">⚠ 미확인</span>`;
+}
+
 // ── INIT ──────────────────────────────────────────────────────────────────────
 // Set data badge
 const hasRealData = Object.keys(REAL_PERIODS).length > 0;
@@ -475,24 +486,20 @@ function render() {
   let rows = '';
   RAW.forEach(([adv, pod, vertical]) => {
     const d = getData(adv, year, month);
-    const tvStr = fmtPeriods(d.tv, month);
-    const ytStr = fmtPeriods(d.yt, month);
-    const metaStr = fmtPeriods(d.meta, month);
+    const rk = `${year}_${month}`;
     const vtCls = VT_CLS[vertical] || 'vt-co';
-    const isReal = REAL_PERIODS[adv] && REAL_PERIODS[adv][`${year}_${month}`];
     rows += `<tr data-adv="${adv}" data-pod="${pod}" data-vertical="${vertical}" data-tv="${d.tv.length>0?1:0}" data-yt="${d.yt.length>0?1:0}" data-meta="${d.meta.length>0?1:0}" onclick="openPanel('${adv}','${pod}','${vertical}',${year},${month})">`;
     rows += `<td class="td-name" title="${adv}">${adv}</td>`;
     rows += `<td class="td-pod"><span class="pod-badge">${pod}</span></td>`;
     rows += `<td class="td-vertical"><span class="vertical-tag ${vtCls}">${vertical}</span></td>`;
-    rows += `<td class="td-media">${tvStr ? `<span class="pill pill-tv"><span class="pdot pdot-tv"></span>${tvStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
-    rows += `<td class="td-media">${ytStr ? `<span class="pill pill-yt"><span class="pdot pdot-yt"></span>${ytStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
-    rows += `<td class="td-media">${metaStr ? `<span class="pill pill-meta"><span class="pdot pdot-meta"></span>${metaStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
+    rows += `<td class="td-media">${mediaPill('tv','tv','tv',d.tv,month,adv,rk)}</td>`;
+    rows += `<td class="td-media">${mediaPill('youtube','yt','yt',d.yt,month,adv,rk)}</td>`;
+    rows += `<td class="td-media">${mediaPill('meta','meta','meta',d.meta,month,adv,rk)}</td>`;
     rows += `</tr>`;
   });
   tbody.innerHTML = rows;
   applyFilter();
   renderStats(year, month);
-  setTimeout(fixTheadTop, 40);
 }
 
 function applyFilter() {
@@ -540,26 +547,8 @@ function renderStats(year, month) {
     <div class="stat"><div class="stat-label">3매체 동시</div><div class="stat-n c-accent">${all3}</div><div class="stat-sub">TV+YT+Meta 모두</div></div>
     <div class="stat"><div class="stat-label">미집행</div><div class="stat-n" style="color:#bbb">${none}</div><div class="stat-sub">3매체 모두 없음</div></div>
   `;
-  setTimeout(fixTheadTop, 40);
 }
 
-function fixTheadTop() {
-  const tb = document.querySelector('.topbar');
-  const tl = document.getElementById('toolbar');
-  const sb = document.getElementById('statsBar');
-  if (!tb||!tl||!sb) return;
-  const top = tb.offsetHeight + tl.offsetHeight + sb.offsetHeight;
-  const hw = document.getElementById('tableHeadWrap');
-  if (hw) hw.style.top = top + 'px';
-}
-
-document.getElementById('tableBodyWrap').addEventListener('scroll', function() {
-  document.getElementById('tableHeadWrap').scrollLeft = this.scrollLeft;
-});
-document.getElementById('tableHeadWrap').addEventListener('scroll', function() {
-  document.getElementById('tableBodyWrap').scrollLeft = this.scrollLeft;
-});
-window.addEventListener('resize', fixTheadTop);
 
 function openPanel(adv, pod, vertical, year, month) {
   document.getElementById('panelTitle').textContent = adv;

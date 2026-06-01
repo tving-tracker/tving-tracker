@@ -58,20 +58,23 @@ Meta 크롤링은 `META_ACCESS_TOKEN`
 
 # ── Load data from DB and inject into HTML template ──────────────────────────
 periods = db.get_periods()
+coverage = db.get_coverage()
 last_crawled = db.get_last_crawl()
 
 template_path = Path(__file__).parent / "template.html"
 html = template_path.read_text(encoding="utf-8")
 
-# Inject real data into the two placeholders
-periods_json = json.dumps(periods, ensure_ascii=False)
 html = html.replace(
     'const REAL_PERIODS = {}; // __TVING_PERIODS_PLACEHOLDER__',
-    f'const REAL_PERIODS = {periods_json};'
+    f'const REAL_PERIODS = {json.dumps(periods, ensure_ascii=False)};'
 )
 html = html.replace(
     'const LAST_CRAWLED = ""; // __TVING_LAST_CRAWLED__',
     f'const LAST_CRAWLED = "{last_crawled}";'
+)
+html = html.replace(
+    'const CRAWL_COVERAGE = {}; // __TVING_COVERAGE_PLACEHOLDER__',
+    f'const CRAWL_COVERAGE = {json.dumps(coverage, ensure_ascii=False)};'
 )
 
 # Render the full HTML app inside Streamlit
