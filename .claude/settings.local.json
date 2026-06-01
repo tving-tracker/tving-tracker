@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(py *)",
+      "PowerShell($env:PATH = [System.Environment]::GetEnvironmentVariable\\(\"PATH\", \"Machine\"\\) + \";\" + [System.Environment]::GetEnvironmentVariable\\(\"PATH\", \"User\"\\); $g = Get-Command git -ErrorAction SilentlyContinue; if \\($g\\) { git --version } else { Write-Host \"git not found - may need to restart terminal\" })",
+      "PowerShell(winget install *)"
+    ]
+  }
+}
