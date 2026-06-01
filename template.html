@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TVING · 광고주 매체 집행 트래커</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f6f3;--surface:#fff;--surface2:#f0efe9;
+  --border:#e4e2da;--border2:#d0cec5;
+  --text:#1a1a1a;--muted:#999;--muted2:#ccc;
+  --tv-bg:#e8f0ff;--tv-text:#2952cc;--tv-dot:#4a7aff;
+  --yt-bg:#fff0f0;--yt-text:#cc2222;--yt-dot:#ff3c3c;
+  --meta-bg:#e8f6ff;--meta-text:#1565a0;--meta-dot:#1a8fe0;
+  --none-bg:#f2f1ed;--none-text:#ccc;
+  --accent:#e51d35;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;min-height:100vh}
+
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.5rem;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+.logo{font-family:'DM Mono',monospace;font-size:12px;letter-spacing:.1em;color:#aaa}
+.logo b{color:var(--accent);font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.legend{display:flex;gap:14px;align-items:center}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+.legend-sq{width:8px;height:8px;border-radius:2px;display:inline-block}
+.data-badge{font-family:'DM Mono',monospace;font-size:10px;padding:3px 8px;border-radius:4px;border:1px solid var(--border2)}
+.data-badge.live{background:#e8fff0;color:#166534;border-color:#bbf7d0}
+.data-badge.demo{background:#fef9ee;color:#92400e;border-color:#fde68a}
+
+.toolbar{background:var(--surface);border-bottom:1px solid var(--border);padding:.55rem 1.5rem;display:flex;align-items:center;gap:6px;flex-wrap:wrap;position:sticky;top:52px;z-index:199}
+select,input{height:32px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:12px;padding:0 10px;outline:none;cursor:pointer}
+select:focus,input:focus{border-color:#999}
+input[type=text]{width:160px;cursor:text}
+.sep{width:1px;height:20px;background:var(--border);margin:0 2px;flex-shrink:0}
+.chip{height:32px;padding:0 11px;border:1px solid var(--border2);border-radius:6px;background:var(--bg);color:var(--muted);font-size:12px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;transition:all .12s;white-space:nowrap}
+.chip:hover{background:#ebe9e2;color:var(--text)}
+.chip.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.count{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+
+.statsbar{display:flex;gap:8px;padding:.7rem 1.5rem;border-bottom:1px solid var(--border);background:var(--surface2)}
+.stat{flex:1;padding:.55rem .85rem;background:var(--surface);border-radius:6px;border:1px solid var(--border)}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-family:'DM Mono',monospace;margin-bottom:4px}
+.stat-n{font-size:20px;font-weight:500;line-height:1}
+.stat-sub{font-size:10px;color:var(--muted);margin-top:3px}
+.c-tv{color:var(--tv-dot)}.c-yt{color:var(--yt-dot)}.c-meta{color:var(--meta-dot)}.c-accent{color:var(--accent)}
+
+.table-wrap{padding:0 1.5rem 4rem}
+.table-head-wrap{overflow-x:auto;position:sticky;z-index:10;background:var(--bg)}
+.table-body-wrap{overflow-x:auto;padding-bottom:4rem}
+table{width:100%;border-collapse:collapse;min-width:780px}
+thead th{
+  font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);padding:8px 14px;text-align:left;
+  border-bottom:2px solid var(--border2);
+  background:var(--bg);white-space:nowrap;
+}
+tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .08s}
+tbody tr:hover{background:rgba(0,0,0,0.018)}
+tbody tr.hidden{display:none}
+td{padding:10px 14px;vertical-align:middle}
+
+.td-name{font-size:13px;font-weight:500;min-width:120px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td-pod{white-space:nowrap}
+.pod-badge{display:inline-block;font-family:'DM Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);white-space:nowrap}
+.td-vertical{min-width:130px;max-width:160px}
+.vertical-tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.td-media{min-width:150px}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 6px;border-radius:20px;font-size:11px;white-space:nowrap}
+.pill-tv{background:var(--tv-bg);color:var(--tv-text)}
+.pill-yt{background:var(--yt-bg);color:var(--yt-text)}
+.pill-meta{background:var(--meta-bg);color:var(--meta-text)}
+.pill-none{background:var(--none-bg);color:var(--none-text)}
+.pdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.pdot-tv{background:var(--tv-dot)}.pdot-yt{background:var(--yt-dot)}.pdot-meta{background:var(--meta-dot)}.pdot-none{background:var(--muted2)}
+
+.vt-ce{background:#eef2ff;color:#3730a3}.vt-cg{background:#f0fdf4;color:#166534}
+.vt-fi{background:#fef9ee;color:#92400e}.vt-tc{background:#f0f9ff;color:#0c4a6e}
+.vt-hm{background:#fdf4ff;color:#6b21a8}.vt-co{background:#f8fafc;color:#475569}
+.vt-cp{background:#fff7ed;color:#9a3412}.vt-gm{background:#f0fdfa;color:#065f46}
+.vt-al{background:#fef2f2;color:#991b1b}.vt-tr{background:#ecfdf5;color:#064e3b}
+.vt-me{background:#eff6ff;color:#1e40af}.vt-bv{background:#fefce8;color:#854d0e}
+.vt-ff{background:#fff1f2;color:#9f1239}.vt-bt{background:#fdf4ff;color:#86198f}
+.vt-au{background:#f1f5f9;color:#334155}.vt-fb{background:#f0f9ff;color:#0369a1}
+.vt-fw{background:#f7fee7;color:#3f6212}.vt-fo{background:#fff7ed;color:#7c2d12}
+.vt-hl{background:#fdf2f8;color:#831843}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.22);z-index:500;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.open{opacity:1;pointer-events:all}
+.panel{position:fixed;right:0;top:0;bottom:0;width:460px;background:var(--surface);border-left:1px solid var(--border);z-index:501;overflow-y:auto;transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1)}
+.panel.open{transform:translateX(0)}
+.panel-head{padding:1rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--surface);z-index:5}
+.panel-title{font-size:15px;font-weight:500}
+.panel-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.panel-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .1s}
+.panel-close:hover{background:var(--bg)}
+.panel-body{padding:1.1rem 1.4rem}
+.mo-card{border:1px solid var(--border);border-radius:8px;margin-bottom:.55rem;overflow:hidden}
+.mo-head{padding:.5rem .9rem;background:var(--surface2);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:space-between}
+.mo-head.cur{background:#e4e2da;font-weight:600}
+.mo-body{padding:.65rem .9rem;display:flex;flex-direction:column;gap:5px}
+.mo-row{display:flex;align-items:center;gap:8px}
+.mo-label{width:68px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:'DM Mono',monospace;flex-shrink:0}
+.gantt-wrap{flex:1;height:6px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
+.gantt-bar{position:absolute;height:100%;border-radius:2px;top:0}
+.bar-tv{background:var(--tv-dot)}.bar-yt{background:var(--yt-dot)}.bar-meta{background:var(--meta-dot)}
+.mo-dates{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-left:6px;white-space:nowrap}
+.data-src{font-size:10px;color:#aaa;font-family:'DM Mono',monospace;margin-top:2px}
+.data-src span{color:#4a7aff}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><b>TVING</b> · ADVERTISER MEDIA TRACKER</div>
+  <div class="topbar-right">
+    <div class="legend">
+      <div class="legend-item"><span class="legend-sq" style="background:var(--tv-dot)"></span>TV/케이블</div>
+      <div class="legend-item"><span class="legend-sq" style="background:var(--yt-dot)"></span>유튜브</div>
+      <div class="legend-item"><span class="legend-sq" style="background:var(--meta-dot)"></span>Meta</div>
+    </div>
+    <div class="data-badge" id="dataBadge">데이터 로딩중...</div>
+  </div>
+</div>
+
+<div class="toolbar" id="toolbar">
+  <select id="selYear" onchange="render()">
+    <option value="2024">2024년</option>
+    <option value="2025" selected>2025년</option>
+    <option value="2026">2026년</option>
+  </select>
+  <select id="selMonth" onchange="render()">
+    <option value="0">1월</option><option value="1">2월</option><option value="2">3월</option>
+    <option value="3">4월</option><option value="4">5월</option><option value="5" selected>6월</option>
+    <option value="6">7월</option><option value="7">8월</option><option value="8">9월</option>
+    <option value="9">10월</option><option value="10">11월</option><option value="11">12월</option>
+  </select>
+  <div class="sep"></div>
+  <select id="selPod" onchange="applyFilter()">
+    <option value="all">전체 Pod</option>
+    <option value="Pod 1">Pod 1</option>
+    <option value="Pod 2">Pod 2</option>
+    <option value="Pod 3">Pod 3</option>
+    <option value="Pod 4">Pod 4</option>
+    <option value="Pod 5">Pod 5</option>
+  </select>
+  <select id="selVertical" onchange="applyFilter()">
+    <option value="all">전체 버티컬</option>
+  </select>
+  <div class="sep"></div>
+  <input type="text" id="searchInput" placeholder="광고주 검색..." oninput="applyFilter()">
+  <div class="sep"></div>
+  <button class="chip on" data-f="all" onclick="setChip(this)">전체</button>
+  <button class="chip" data-f="tv" onclick="setChip(this)">TV 집행</button>
+  <button class="chip" data-f="yt" onclick="setChip(this)">유튜브 집행</button>
+  <button class="chip" data-f="meta" onclick="setChip(this)">Meta 집행</button>
+  <button class="chip" data-f="none" onclick="setChip(this)">미집행</button>
+  <div class="count" id="countEl">— 개사</div>
+</div>
+
+<div class="statsbar" id="statsBar"></div>
+
+<div class="table-wrap">
+  <div class="table-head-wrap" id="tableHeadWrap">
+    <table id="headTable">
+      <thead id="thead">
+        <tr>
+          <th style="min-width:130px">광고주</th>
+          <th style="min-width:70px">Pod</th>
+          <th style="min-width:140px">버티컬</th>
+          <th style="min-width:160px">TV / 케이블</th>
+          <th style="min-width:160px">유튜브</th>
+          <th style="min-width:160px">Meta (FB/IG)</th>
+        </tr>
+      </thead>
+    </table>
+  </div>
+  <div class="table-body-wrap" id="tableBodyWrap">
+    <table id="bodyTable">
+      <colgroup>
+        <col style="min-width:130px"><col style="min-width:70px">
+        <col style="min-width:140px"><col style="min-width:160px">
+        <col style="min-width:160px"><col style="min-width:160px">
+      </colgroup>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" onclick="closePanel()"></div>
+<div class="panel" id="panel">
+  <div class="panel-head">
+    <div>
+      <div class="panel-title" id="panelTitle"></div>
+      <div class="panel-meta" id="panelMeta"></div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">×</button>
+  </div>
+  <div class="panel-body" id="panelBody"></div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
+const RAW = [
+  ['삼성전자_한국총괄','Pod 1','Consumer Electronics'],
+  ['한국존슨앤드존슨','Pod 1','Consumer Goods'],
+  ['삼성생명보험','Pod 1','Finance_Insurance'],
+  ['애플','Pod 1','Consumer Electronics'],
+  ['엘지유플러스','Pod 1','Telecom'],
+  ['디비손해보험','Pod 1','Finance_Insurance'],
+  ['쓰리에이치','Pod 1','Consumer Electronics'],
+  ['브리타코리아','Pod 1','Consumer Goods'],
+  ['엘지전자','Pod 1','Consumer Electronics'],
+  ['필립스코리아','Pod 1','Consumer Goods'],
+  ['케이비손해보험','Pod 1','Finance_Insurance'],
+  ['유한킴벌리','Pod 1','Consumer Goods'],
+  ['다이슨','Pod 1','Consumer Electronics'],
+  ['현대해상','Pod 1','Finance_Insurance'],
+  ['케이티','Pod 1','Telecom'],
+  ['악사손해보험','Pod 1','Finance_Insurance'],
+  ['한화생명보험','Pod 1','Finance_Insurance'],
+  ['도루코','Pod 1','Consumer Goods'],
+  ['라이나생명','Pod 1','Finance_Insurance'],
+  ['삼성화재','Pod 1','Finance_Insurance'],
+  ['신한라이프','Pod 1','Finance_Insurance'],
+  ['애경산업','Pod 1','Consumer Goods'],
+  ['에스케이텔레콤','Pod 1','Telecom'],
+  ['에이비엘생명보험','Pod 1','Finance_Insurance'],
+  ['유니레버코리아','Pod 1','Consumer Goods'],
+  ['코스모앤컴퍼니','Pod 1','Consumer Electronics'],
+  ['팅크웨어모바일','Pod 1','Consumer Electronics'],
+  ['한국프리드라이프','Pod 1','Finance_Insurance'],
+  ['한국피앤지','Pod 1','Consumer Goods'],
+  ['켄뷰코리아','Pod 1','Consumer Goods'],
+  ['올리브영','Pod 2','Commerce/Platform'],
+  ['신세계','Pod 2','Commerce/Platform'],
+  ['지마켓','Pod 2','Commerce/Platform'],
+  ['네이버','Pod 2','Commerce/Platform'],
+  ['롯데쇼핑','Pod 2','Commerce/Platform'],
+  ['아정네트웍스','Pod 2','Commerce/Platform'],
+  ['우아한형제들','Pod 2','Commerce/Platform'],
+  ['이마트','Pod 2','Commerce/Platform'],
+  ['잡코리아','Pod 2','Commerce/Platform'],
+  ['쿠팡','Pod 2','Commerce/Platform'],
+  ['세방그룹','Pod 2','Corporate'],
+  ['지에스건설','Pod 2','Corporate'],
+  ['포스코','Pod 2','Corporate'],
+  ['한라그룹','Pod 2','Corporate'],
+  ['현대엘리베이터','Pod 2','Corporate'],
+  ['파마리서치','Pod 2','Health/Medical'],
+  ['한국오츠카제약','Pod 2','Health/Medical'],
+  ['대상웰라이프','Pod 2','Health/Medical'],
+  ['유한양행','Pod 2','Health/Medical'],
+  ['동화약품','Pod 2','Health/Medical'],
+  ['바이엘코리아','Pod 2','Health/Medical'],
+  ['광동제약','Pod 2','Health/Medical'],
+  ['한국MSD','Pod 2','Health/Medical'],
+  ['한국인삼공사','Pod 2','Health/Medical'],
+  ['쎌바이오텍','Pod 2','Health/Medical'],
+  ['바임글로벌','Pod 2','Health/Medical'],
+  ['동국제약','Pod 2','Health/Medical'],
+  ['동아제약','Pod 2','Health/Medical'],
+  ['멀츠아시아퍼시픽','Pod 2','Health/Medical'],
+  ['삼양사','Pod 2','Health/Medical'],
+  ['삼진제약','Pod 2','Health/Medical'],
+  ['에이스바이옴','Pod 2','Health/Medical'],
+  ['GNM라이프','Pod 2','Health/Medical'],
+  ['한국알콘','Pod 2','Health/Medical'],
+  ['헤일리온코리아','Pod 2','Health/Medical'],
+  ['한샘','Pod 2','Home/Living'],
+  ['일룸','Pod 2','Home/Living'],
+  ['경동나비엔','Pod 2','Home/Living'],
+  ['코웨이','Pod 2','Home/Living'],
+  ['귀뚜라미보일러','Pod 2','Home/Living'],
+  ['세라젬','Pod 2','Home/Living'],
+  ['세스코','Pod 2','Home/Living'],
+  ['에이스침대','Pod 2','Home/Living'],
+  ['LX홀딩스','Pod 2','Home/Living'],
+  ['자코모','Pod 2','Home/Living'],
+  ['청호나이스','Pod 2','Home/Living'],
+  ['퍼시스','Pod 2','Home/Living'],
+  ['컴투스','Pod 3','Game'],
+  ['OB맥주','Pod 3','Alcohol'],
+  ['바이트댄스','Pod 3','Media/Entertainment'],
+  ['오비맥주','Pod 3','Alcohol'],
+  ['하이트진로음료','Pod 3','Alcohol'],
+  ['익스피디아그룹','Pod 3','Travel'],
+  ['넷마블','Pod 3','Game'],
+  ['에어비앤비코리아','Pod 3','Travel'],
+  ['구글코리아','Pod 3','Media/Entertainment'],
+  ['한국닌텐도','Pod 3','Game'],
+  ['디아지오코리아','Pod 3','Alcohol'],
+  ['넥슨코리아','Pod 3','Game'],
+  ['빔산토리코리아','Pod 3','Alcohol'],
+  ['스마일게이트','Pod 3','Game'],
+  ['스포티파이코리아','Pod 3','Media/Entertainment'],
+  ['엔씨소프트','Pod 3','Game'],
+  ['여기어때','Pod 3','Travel'],
+  ['웹젠','Pod 3','Game'],
+  ['위메이드','Pod 3','Game'],
+  ['켄바','Pod 3','Media/Entertainment'],
+  ['트립닷컴','Pod 3','Travel'],
+  ['하나투어','Pod 3','Travel'],
+  ['해긴','Pod 3','Game'],
+  ['호텔스컴바인','Pod 3','Travel'],
+  ['롯데칠성음료','Pod 4','Beverage'],
+  ['다이닝브랜즈그룹','Pod 4','Food Franchise'],
+  ['한국맥도날드','Pod 4','Food Franchise'],
+  ['파파존스','Pod 4','Food Franchise'],
+  ['티젠','Pod 4','Beverage'],
+  ['빙그레','Pod 4','Beverage'],
+  ['한국코카콜라','Pod 4','Beverage'],
+  ['제스프리인터내셔날코리아','Pod 4','Food'],
+  ['HK이노엔','Pod 4','Beauty'],
+  ['지앤푸드','Pod 4','Food Franchise'],
+  ['써브웨이','Pod 4','Food Franchise'],
+  ['동서식품','Pod 4','Beverage'],
+  ['동아오츠카','Pod 4','Beverage'],
+  ['아이더스에프앤비','Pod 4','Food Franchise'],
+  ['비케이알','Pod 4','Food Franchise'],
+  ['아모레퍼시픽','Pod 4','Beauty'],
+  ['롯데지알에스','Pod 4','Food Franchise'],
+  ['웅진식품','Pod 4','Beverage'],
+  ['롯데아사히주류','Pod 4','Beverage'],
+  ['대상홀딩스','Pod 4','Food'],
+  ['롯데웰푸드','Pod 4','Food'],
+  ['멕시카나','Pod 4','Food Franchise'],
+  ['삼양식품','Pod 4','Food'],
+  ['씨제이제일제당','Pod 4','Food'],
+  ['에스씨케이컴퍼니','Pod 4','Food Franchise'],
+  ['에이피알','Pod 4','Beauty'],
+  ['엘브이엠에치코스메틱스','Pod 4','Beauty'],
+  ['엘카코리아','Pod 4','Beauty'],
+  ['청오디피케이','Pod 4','Food Franchise'],
+  ['클리오','Pod 4','Beauty'],
+  ['풀무원','Pod 4','Food'],
+  ['퓨젠바이오','Pod 4','Beauty'],
+  ['한국마즈','Pod 4','Food'],
+  ['MG새마을금고','Pod 5','Finance_Bank/Card'],
+  ['자비스앤빌런즈','Pod 5','Fintech/Investment'],
+  ['브이아이피자산운용','Pod 5','Fintech/Investment'],
+  ['한국타이어','Pod 5','Auto'],
+  ['르노코리아','Pod 5','Auto'],
+  ['NH투자증권','Pod 5','Fintech/Investment'],
+  ['한국토요타자동차','Pod 5','Auto'],
+  ['언더아머코리아','Pod 5','Fashion'],
+  ['볼보코리아','Pod 5','Auto'],
+  ['아이더','Pod 5','Fashion'],
+  ['금호타이어','Pod 5','Auto'],
+  ['미래에셋증권','Pod 5','Fintech/Investment'],
+  ['해빗팩토리','Pod 5','Fintech/Investment'],
+  ['엔에이치아문디자산운용','Pod 5','Finance_Bank/Card'],
+  ['블랙야크','Pod 5','Fashion'],
+  ['아디다스코리아','Pod 5','Fashion'],
+  ['신한금융지주','Pod 5','Fintech/Investment'],
+  ['스텔란티스코리아','Pod 5','Auto'],
+  ['현대자동차','Pod 5','Auto'],
+  ['기아','Pod 5','Auto'],
+  ['BYD코리아','Pod 5','Auto'],
+  ['신한카드','Pod 5','Finance_Bank/Card'],
+  ['나이키코리아','Pod 5','Fashion'],
+  ['롯데카드','Pod 5','Finance_Bank/Card'],
+  ['BMW코리아','Pod 5','Auto'],
+  ['삼성카드','Pod 5','Finance_Bank/Card'],
+  ['신한은행','Pod 5','Finance_Bank/Card'],
+  ['NH농협은행','Pod 5','Finance_Bank/Card'],
+  ['엔카닷컴','Pod 5','Auto'],
+  ['우리금융지주','Pod 5','Finance_Bank/Card'],
+  ['재규어랜드로버','Pod 5','Auto'],
+  ['KB캐피탈','Pod 5','Fintech/Investment'],
+  ['코오롱스포츠','Pod 5','Fashion'],
+  ['키움증권','Pod 5','Fintech/Investment'],
+  ['토스','Pod 5','Fintech/Investment'],
+  ['폭스바겐그룹코리아','Pod 5','Auto'],
+  ['폴스타','Pod 5','Auto'],
+  ['현대카드','Pod 5','Finance_Bank/Card'],
+  ['KB증권','Pod 5','Finance_Bank/Card'],
+];
+
+// ── REAL CRAWLED DATA (injected by Python) ────────────────────────────────────
+// Format: { "광고주명": { "year_month": { tv:[{s,e},...], yt:[...], meta:[...] } } }
+const REAL_PERIODS = {}; // __TVING_PERIODS_PLACEHOLDER__
+const LAST_CRAWLED = ""; // __TVING_LAST_CRAWLED__
+
+// ── VERTICAL CSS MAP ──────────────────────────────────────────────────────────
+const VT_CLS = {
+  'Consumer Electronics':'vt-ce','Consumer Goods':'vt-cg','Finance_Insurance':'vt-fi',
+  'Telecom':'vt-tc','Health/Medical':'vt-hm','Corporate':'vt-co','Commerce/Platform':'vt-cp',
+  'Game':'vt-gm','Alcohol':'vt-al','Travel':'vt-tr','Media/Entertainment':'vt-me',
+  'Beverage':'vt-bv','Food Franchise':'vt-ff','Beauty':'vt-bt','Auto':'vt-au',
+  'Finance_Bank/Card':'vt-fb','Fashion':'vt-fw','Food':'vt-fo','Fintech/Investment':'vt-hl',
+  'Home/Living':'vt-hl'
+};
+
+const DAYS_IN_MONTH = [31,28,29,30,31,30,31,31,30,31,30,31];
+const MONTHS_KR = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+
+// Heavy sets for fallback demo data
+const TV_H = new Set(['올리브영','신세계','이마트','쿠팡','네이버','롯데쇼핑','경동나비엔','한국인삼공사','동아제약','코웨이','우아한형제들','광동제약','귀뚜라미보일러','세스코','지에스건설','현대엘리베이터','유한양행','포스코','한라그룹','삼성전자_한국총괄','엘지전자','현대자동차','기아','에스케이텔레콤','케이티','엘지유플러스','삼성생명보험','한화생명보험','현대해상','디비손해보험','MG새마을금고','한국타이어','금호타이어','롯데칠성음료','한국코카콜라','빙그레','한국맥도날드','아모레퍼시픽','OB맥주','하이트진로음료','한샘','일룸','파마리서치','한국오츠카제약','블랙야크','현대카드','신한카드','삼성카드']);
+const YT_H = new Set(['올리브영','신세계','이마트','쿠팡','네이버','한샘','파마리서치','바임글로벌','잡코리아','지마켓','에이스침대','우아한형제들','세라젬','롯데쇼핑','지에스건설','바이엘코리아','에이스바이옴','자코모','헤일리온코리아','삼성전자_한국총괄','엘지전자','현대자동차','기아','바이트댄스','구글코리아','아모레퍼시픽','클리오','에어비앤비코리아','여기어때','컴투스','넷마블','넥슨코리아','에이피알','토스','자비스앤빌런즈','아디다스코리아','나이키코리아','신한금융지주']);
+const META_H = new Set(['올리브영','파마리서치','바임글로벌','이마트','쿠팡','네이버','한샘','지마켓','에이스침대','에이스바이옴','자코모','헤일리온코리아','대상웰라이프','쎌바이오텍','GNM라이프','아정네트웍스','클리오','아모레퍼시픽','에이피알','토스','자비스앤빌런즈','여기어때','하나투어','에어비앤비코리아','트립닷컴','아디다스코리아','나이키코리아','언더아머코리아','신한금융지주','BYD코리아','폴스타']);
+
+// ── DATA HELPERS ──────────────────────────────────────────────────────────────
+const cache = {};
+function getData(adv, year, month) {
+  const key = `${adv}_${year}_${month}`;
+  if (!cache[key]) {
+    const rk = `${year}_${month}`;
+    // Use real crawled data if available
+    if (REAL_PERIODS[adv] && REAL_PERIODS[adv][rk]) {
+      cache[key] = REAL_PERIODS[adv][rk];
+    } else {
+      cache[key] = genPeriods(adv, year, month);
+    }
+  }
+  return cache[key];
+}
+
+function genPeriods(adv, year, month) {
+  const days = DAYS_IN_MONTH[month];
+  const tvP = TV_H.has(adv) ? 0.74 : 0.22;
+  const ytP = YT_H.has(adv) ? 0.76 : 0.20;
+  const metaP = META_H.has(adv) ? 0.72 : 0.17;
+  function make(prob) {
+    if (Math.random() > prob) return [];
+    const n = Math.random() < 0.55 ? 1 : Math.random() < 0.65 ? 2 : 3;
+    const res = []; let cur = 1;
+    for (let i = 0; i < n && cur <= days; i++) {
+      const s = cur + Math.floor(Math.random() * 4);
+      if (s > days) break;
+      const len = Math.floor(Math.random() * 13) + 3;
+      const e = Math.min(s + len - 1, days);
+      res.push({s, e});
+      cur = e + Math.floor(Math.random() * 5) + 2;
+    }
+    return res;
+  }
+  return { tv: make(tvP), yt: make(ytP), meta: make(metaP) };
+}
+
+function fmtPeriods(periods, month) {
+  if (!periods || periods.length === 0) return null;
+  return periods.map(p => p.s === p.e ? `${month+1}/${p.s}` : `${month+1}/${p.s}~${month+1}/${p.e}`).join('  ·  ');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+// Set data badge
+const hasRealData = Object.keys(REAL_PERIODS).length > 0;
+const badge = document.getElementById('dataBadge');
+if (hasRealData) {
+  badge.textContent = `실 데이터 · ${LAST_CRAWLED || ''}`;
+  badge.className = 'data-badge live';
+} else {
+  badge.textContent = '샘플 데이터 (크롤링 전)';
+  badge.className = 'data-badge demo';
+}
+
+// Populate vertical dropdown
+const verticals = [...new Set(RAW.map(r => r[2]))].sort();
+const selV = document.getElementById('selVertical');
+verticals.forEach(v => {
+  const o = document.createElement('option');
+  o.value = v; o.textContent = v;
+  selV.appendChild(o);
+});
+
+let currentFilter = 'all';
+
+function render() {
+  const year = +document.getElementById('selYear').value;
+  const month = +document.getElementById('selMonth').value;
+  const tbody = document.getElementById('tbody');
+  let rows = '';
+  RAW.forEach(([adv, pod, vertical]) => {
+    const d = getData(adv, year, month);
+    const tvStr = fmtPeriods(d.tv, month);
+    const ytStr = fmtPeriods(d.yt, month);
+    const metaStr = fmtPeriods(d.meta, month);
+    const vtCls = VT_CLS[vertical] || 'vt-co';
+    const isReal = REAL_PERIODS[adv] && REAL_PERIODS[adv][`${year}_${month}`];
+    rows += `<tr data-adv="${adv}" data-pod="${pod}" data-vertical="${vertical}" data-tv="${d.tv.length>0?1:0}" data-yt="${d.yt.length>0?1:0}" data-meta="${d.meta.length>0?1:0}" onclick="openPanel('${adv}','${pod}','${vertical}',${year},${month})">`;
+    rows += `<td class="td-name" title="${adv}">${adv}</td>`;
+    rows += `<td class="td-pod"><span class="pod-badge">${pod}</span></td>`;
+    rows += `<td class="td-vertical"><span class="vertical-tag ${vtCls}">${vertical}</span></td>`;
+    rows += `<td class="td-media">${tvStr ? `<span class="pill pill-tv"><span class="pdot pdot-tv"></span>${tvStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
+    rows += `<td class="td-media">${ytStr ? `<span class="pill pill-yt"><span class="pdot pdot-yt"></span>${ytStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
+    rows += `<td class="td-media">${metaStr ? `<span class="pill pill-meta"><span class="pdot pdot-meta"></span>${metaStr}</span>` : `<span class="pill pill-none"><span class="pdot pdot-none"></span>미집행</span>`}</td>`;
+    rows += `</tr>`;
+  });
+  tbody.innerHTML = rows;
+  applyFilter();
+  renderStats(year, month);
+  setTimeout(fixTheadTop, 40);
+}
+
+function applyFilter() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const pod = document.getElementById('selPod').value;
+  const vertical = document.getElementById('selVertical').value;
+  const rows = document.querySelectorAll('#tbody tr');
+  let vis = 0;
+  rows.forEach(r => {
+    const adv = r.dataset.adv.toLowerCase();
+    const tv = r.dataset.tv==='1', yt = r.dataset.yt==='1', meta = r.dataset.meta==='1';
+    let show = adv.includes(q);
+    if (show && pod !== 'all') show = r.dataset.pod === pod;
+    if (show && vertical !== 'all') show = r.dataset.vertical === vertical;
+    if (show && currentFilter === 'tv') show = tv;
+    if (show && currentFilter === 'yt') show = yt;
+    if (show && currentFilter === 'meta') show = meta;
+    if (show && currentFilter === 'none') show = !tv && !yt && !meta;
+    r.classList.toggle('hidden', !show);
+    if (show) vis++;
+  });
+  document.getElementById('countEl').textContent = `${vis}개사`;
+}
+
+function setChip(el) {
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+  el.classList.add('on');
+  currentFilter = el.dataset.f;
+  applyFilter();
+}
+
+function renderStats(year, month) {
+  let tv=0,yt=0,meta=0,all3=0,none=0;
+  RAW.forEach(([adv]) => {
+    const d = getData(adv, year, month);
+    const t=d.tv.length>0, y=d.yt.length>0, m=d.meta.length>0;
+    if(t)tv++;if(y)yt++;if(m)meta++;
+    if(t&&y&&m)all3++;if(!t&&!y&&!m)none++;
+  });
+  const total = RAW.length;
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat"><div class="stat-label">TV/케이블</div><div class="stat-n c-tv">${tv}</div><div class="stat-sub">${total}개사 중 ${Math.round(tv/total*100)}%</div></div>
+    <div class="stat"><div class="stat-label">유튜브</div><div class="stat-n c-yt">${yt}</div><div class="stat-sub">${total}개사 중 ${Math.round(yt/total*100)}%</div></div>
+    <div class="stat"><div class="stat-label">Meta</div><div class="stat-n c-meta">${meta}</div><div class="stat-sub">${total}개사 중 ${Math.round(meta/total*100)}%</div></div>
+    <div class="stat"><div class="stat-label">3매체 동시</div><div class="stat-n c-accent">${all3}</div><div class="stat-sub">TV+YT+Meta 모두</div></div>
+    <div class="stat"><div class="stat-label">미집행</div><div class="stat-n" style="color:#bbb">${none}</div><div class="stat-sub">3매체 모두 없음</div></div>
+  `;
+  setTimeout(fixTheadTop, 40);
+}
+
+function fixTheadTop() {
+  const tb = document.querySelector('.topbar');
+  const tl = document.getElementById('toolbar');
+  const sb = document.getElementById('statsBar');
+  if (!tb||!tl||!sb) return;
+  const top = tb.offsetHeight + tl.offsetHeight + sb.offsetHeight;
+  const hw = document.getElementById('tableHeadWrap');
+  if (hw) hw.style.top = top + 'px';
+}
+
+document.getElementById('tableBodyWrap').addEventListener('scroll', function() {
+  document.getElementById('tableHeadWrap').scrollLeft = this.scrollLeft;
+});
+document.getElementById('tableHeadWrap').addEventListener('scroll', function() {
+  document.getElementById('tableBodyWrap').scrollLeft = this.scrollLeft;
+});
+window.addEventListener('resize', fixTheadTop);
+
+function openPanel(adv, pod, vertical, year, month) {
+  document.getElementById('panelTitle').textContent = adv;
+  const isReal = Object.keys(REAL_PERIODS).length > 0;
+  const srcLabel = isReal
+    ? '<span class="data-src">소스: <span>TVCF</span> · <span>Google</span> · <span>Meta</span></span>'
+    : '<span class="data-src" style="color:#f59e0b">⚠ 샘플 데이터 (크롤링 전)</span>';
+  document.getElementById('panelMeta').innerHTML = `<span class="pod-badge" style="font-size:10px">${pod}</span>&ensp;<span class="vertical-tag ${VT_CLS[vertical]||'vt-co'}" style="font-size:10px;padding:1px 6px;border-radius:3px">${vertical}</span>&ensp;${srcLabel}`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('panel').classList.add('open');
+
+  let html = `<p style="font-size:11px;color:var(--muted);margin-bottom:1rem;font-family:'DM Mono',monospace">${year}년 월별 집행 현황</p>`;
+  MONTHS_KR.forEach((mo, mi) => {
+    const d = getData(adv, year, mi);
+    const dim = DAYS_IN_MONTH[mi];
+    const isCur = mi === month;
+    html += `<div class="mo-card" style="${isCur?'border-color:#999':''}">`;
+    html += `<div class="mo-head${isCur?' cur':''}"><span>${mo}</span>${isCur?'<span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">현재 월</span>':''}</div>`;
+    html += `<div class="mo-body">`;
+    [['tv','TV','bar-tv',d.tv],['yt','유튜브','bar-yt',d.yt],['meta','Meta','bar-meta',d.meta]].forEach(([k,label,barCls,periods]) => {
+      const str = fmtPeriods(periods, mi);
+      html += `<div class="mo-row"><div class="mo-label">${label}</div><div class="gantt-wrap">`;
+      periods.forEach(p => {
+        const l = ((p.s-1)/dim*100).toFixed(1);
+        const w = ((p.e-p.s+1)/dim*100).toFixed(1);
+        html += `<div class="gantt-bar ${barCls}" style="left:${l}%;width:${w}%"></div>`;
+      });
+      html += `</div><div class="mo-dates">${str||'—'}</div></div>`;
+    });
+    html += `</div></div>`;
+  });
+  document.getElementById('panelBody').innerHTML = html;
+}
+
+function closePanel() {
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('panel').classList.remove('open');
+}
+
+render();
+</script>
+</body>
+</html>
