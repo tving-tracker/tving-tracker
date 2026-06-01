@@ -3,7 +3,7 @@ name: Daily Ad Crawl
 on:
   schedule:
     - cron: "0 16 * * *"   # 01:00 KST (UTC+9) = 16:00 UTC
-  workflow_dispatch:         # manual trigger
+  workflow_dispatch:         # 수동 실행 버튼
 
 jobs:
   crawl:
@@ -16,13 +16,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: pip install requests beautifulsoup4 playwright
-             && playwright install chromium --with-deps
 
-      - name: Run crawlers
-        env:
-          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+      - name: Install Playwright browsers
+        run: python -m playwright install chromium --with-deps
+
+      - name: Run crawlers (current month)
         run: python crawl.py
 
       - name: Commit updated DB
