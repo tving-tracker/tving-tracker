@@ -98,9 +98,8 @@ def _process_batch(advertisers: list[str], year: int, month: int,
 def _search_one(page, api_data: list[bytes], advertiser: str,
                 year: int, month: int, days_in_month: int) -> list[dict]:
     """페이지 재사용: 검색창 갱신만으로 다음 광고주 검색."""
-    # 검색창 초기화 후 입력
+    # 검색창 초기화 후 입력 (fill은 기존 텍스트 자동 클리어)
     inp = page.locator("input").first
-    inp.triple_click()
     inp.fill(advertiser)
     page.wait_for_timeout(900)
 
