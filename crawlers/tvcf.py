@@ -156,11 +156,11 @@ def _parse_card_dates(text: str, year: int, target_month: int) -> list[dict]:
 def _clip(s: date, e: date, m_start: date, m_end: date) -> list[dict]:
     today = date.today()
     actual_s = max(s, m_start)
-    # 현재 월이면 오늘 이후 미래 날짜 제거
-    actual_e = min(e, m_end, today if m_end >= today else m_end)
-    if actual_s <= actual_e:
-        return [{"s": actual_s.day, "e": actual_e.day}]
-    return []
+    # 미래 날짜이면 제외, 해당 월에 속하지 않으면 제외
+    if actual_s > min(m_end, today):
+        return []
+    # 라이브 날짜(시작일)만 반환 — 범위 미보장
+    return [{"s": actual_s.day, "e": actual_s.day}]
 
 
 def _merge_periods(periods: list[dict]) -> list[dict]:

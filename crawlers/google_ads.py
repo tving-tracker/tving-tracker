@@ -136,12 +136,8 @@ def _search_one(page, api_data: list[bytes], advertiser: str,
 
     periods = _parse_api_responses(api_data, year, month, days_in_month)
     if not periods:
-        today = datetime.now()
-        if year == today.year and month == today.month:
-            last_day = today.day
-        else:
-            last_day = days_in_month
-        periods = [{"s": 1, "e": last_day}]
+        # 날짜 데이터 없이 광고주만 확인된 경우 → 1일(라이브 확인)만 표시
+        periods = [{"s": 1, "e": 1}]
 
     # 다음 광고주를 위해 검색 홈으로 복귀 (domcontentloaded → 빠름)
     try:
@@ -177,14 +173,5 @@ def _parse_api_responses(responses: list[bytes], year: int,
 
 
 def _days_to_periods(days: list[int]) -> list[dict]:
-    if not days:
-        return []
-    periods, start, prev = [], days[0], days[0]
-    for d in days[1:]:
-        if d <= prev + 2:
-            prev = d
-        else:
-            periods.append({"s": start, "e": prev})
-            start = prev = d
-    periods.append({"s": start, "e": prev})
-    return periods
+    # 개별 날짜를 각각 단일 포인트로 반환 (범위 미사용)
+    return [{"s": d, "e": d} for d in days]

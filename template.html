@@ -441,7 +441,7 @@ function genPeriods(adv, year, month) {
 
 function fmtPeriods(periods, month) {
   if (!periods || periods.length === 0) return null;
-  return periods.map(p => p.s === p.e ? `${month+1}/${p.s}` : `${month+1}/${p.s}~${month+1}/${p.e}`).join('  ·  ');
+  return periods.map(p => `${month+1}/${p.s}`).join('  ·  ');
 }
 
 function mediaPill(key, pillCls, dotCls, periods, month, adv, rk) {
