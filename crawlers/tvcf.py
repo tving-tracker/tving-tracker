@@ -35,14 +35,19 @@ class TvcfCrawler:
         self.session = requests.Session()
         self.session.headers.update(HEADERS)
 
-    def crawl(self, advertisers: list[str], year: int, month: int) -> dict:
-        """month: 0-indexed (JS). Returns {advertiser: [{s,e}, ...]}"""
+    def crawl(self, advertisers: list[str], year: int, month: int,
+              aliases: dict[str, list[str]] | None = None) -> dict:
+        """month: 0-indexed (JS). aliases: {advertiser: [extra_search_terms]}
+        Returns {advertiser: [{s,e}, ...]}"""
         target_month = month + 1
+        aliases = aliases or {}
         results = {}
 
         with ThreadPoolExecutor(max_workers=self.workers) as ex:
             futures = {
-                ex.submit(self._crawl_one, adv, year, target_month): adv
+                ex.submit(
+                    self._crawl_adv, adv, year, target_month, aliases.get(adv, [])
+                ): adv
                 for adv in advertisers
             }
             for fut in as_completed(futures):
@@ -56,6 +61,14 @@ class TvcfCrawler:
                     logger.warning(f"TVCF {adv}: {e}")
 
         return results
+
+    def _crawl_adv(self, advertiser: str, year: int, month: int,
+                   extra_terms: list[str]) -> list[dict]:
+        """광고주명 + alias 모두 검색 후 결과 병합."""
+        all_periods: list[dict] = []
+        for term in [advertiser] + extra_terms:
+            all_periods.extend(self._crawl_one(term, year, month))
+        return _merge_periods(all_periods)
 
     def _crawl_one(self, advertiser: str, year: int, month: int) -> list[dict]:
         all_periods: list[dict] = []
@@ -141,8 +154,10 @@ def _parse_card_dates(text: str, year: int, target_month: int) -> list[dict]:
 
 
 def _clip(s: date, e: date, m_start: date, m_end: date) -> list[dict]:
+    today = date.today()
     actual_s = max(s, m_start)
-    actual_e = min(e, m_end)
+    # 현재 월이면 오늘 이후 미래 날짜 제거
+    actual_e = min(e, m_end, today if m_end >= today else m_end)
     if actual_s <= actual_e:
         return [{"s": actual_s.day, "e": actual_e.day}]
     return []
