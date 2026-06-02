@@ -99,18 +99,22 @@ td{padding:10px 14px;vertical-align:middle}
 .panel-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .panel-close{width:28px;height:28px;border-radius:6px;border:1px solid var(--border2);background:none;cursor:pointer;font-size:16px;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all .1s}
 .panel-close:hover{background:var(--bg)}
-.panel-body{padding:1.1rem 1.4rem}
-.mo-card{border:1px solid var(--border);border-radius:8px;margin-bottom:.55rem;overflow:hidden}
-.mo-head{padding:.5rem .9rem;background:var(--surface2);font-size:11px;font-weight:500;display:flex;align-items:center;justify-content:space-between}
-.mo-head.cur{background:#e4e2da;font-weight:600}
-.mo-body{padding:.65rem .9rem;display:flex;flex-direction:column;gap:5px}
-.mo-row{display:flex;align-items:center;gap:8px}
-.mo-label{width:68px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:'DM Mono',monospace;flex-shrink:0}
-.gantt-wrap{flex:1;height:6px;background:var(--border);border-radius:3px;position:relative;overflow:hidden}
-.gantt-bar{position:absolute;height:100%;border-radius:2px;top:0}
-.bar-tv{background:var(--tv-dot)}.bar-yt{background:var(--yt-dot)}.bar-meta{background:var(--meta-dot)}
-.mo-dates{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-left:6px;white-space:nowrap}
-.data-src{font-size:10px;color:#aaa;font-family:'DM Mono',monospace;margin-top:2px}
+.panel-body{padding:0}
+.year-tabs{display:flex;gap:3px;border:1px solid var(--border2);border-radius:6px;padding:2px;background:var(--bg)}
+.year-tab{height:22px;padding:0 10px;border:none;border-radius:4px;background:none;color:var(--muted);font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;transition:all .12s}
+.year-tab.active{background:var(--text);color:var(--bg)}
+.mo-table{width:100%;border-collapse:collapse}
+.mo-table thead th{font-size:10px;font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:9px 14px;border-bottom:2px solid var(--border2);text-align:left;font-family:'DM Mono',monospace;background:var(--surface2);position:sticky;top:0}
+.mo-table tbody tr{border-bottom:1px solid var(--border);transition:background .08s}
+.mo-table tbody tr:hover{background:rgba(0,0,0,.018)}
+.mo-table td{padding:9px 14px;vertical-align:middle}
+.mo-month{font-size:12px;font-weight:500;width:36px;white-space:nowrap}
+.mo-cell{font-family:'DM Mono',monospace;font-size:11px}
+.mo-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;line-height:1.6}
+.mo-tag-tv{background:var(--tv-bg);color:var(--tv-text)}
+.mo-tag-yt{background:var(--yt-bg);color:var(--yt-text)}
+.mo-dash{color:var(--muted2);font-size:11px;font-family:'DM Mono',monospace}
+.mo-row-future td{opacity:.28}
 .data-src span{color:#4a7aff}
 </style>
 </head>
@@ -190,7 +194,10 @@ td{padding:10px 14px;vertical-align:middle}
       <div class="panel-title" id="panelTitle"></div>
       <div class="panel-meta" id="panelMeta"></div>
     </div>
-    <button class="panel-close" onclick="closePanel()">×</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="year-tabs" id="yearTabs"></div>
+      <button class="panel-close" onclick="closePanel()">×</button>
+    </div>
   </div>
   <div class="panel-body" id="panelBody"></div>
 </div>
@@ -576,36 +583,63 @@ function renderStats(year, month) {
 }
 
 
+// ── PANEL ─────────────────────────────────────────────────────────────────────
+let _pAdv = '', _pPod = '', _pVertical = '', _pYear = new Date().getFullYear();
+
+const PANEL_YEARS = [2025, 2026];
+
 function openPanel(adv, pod, vertical, year, month) {
+  _pAdv = adv; _pPod = pod; _pVertical = vertical; _pYear = year;
+
   document.getElementById('panelTitle').textContent = adv;
-  const isReal = Object.keys(REAL_PERIODS).length > 0;
-  const srcLabel = isReal
-    ? '<span class="data-src">소스: <span>TVCF</span> · <span>Google</span> · <span>Meta</span></span>'
-    : '<span class="data-src" style="color:#f59e0b">⚠ 샘플 데이터 (크롤링 전)</span>';
-  document.getElementById('panelMeta').innerHTML = `<span class="pod-badge" style="font-size:10px">${pod}</span>&ensp;<span class="vertical-tag ${VT_CLS[vertical]||'vt-co'}" style="font-size:10px;padding:1px 6px;border-radius:3px">${vertical}</span>&ensp;${srcLabel}`;
+  const vtCls = VT_CLS[vertical] || 'vt-co';
+  document.getElementById('panelMeta').innerHTML =
+    `<span class="pod-badge" style="font-size:10px">${pod}</span>&ensp;` +
+    `<span class="vertical-tag ${vtCls}" style="font-size:10px;padding:1px 6px;border-radius:3px">${vertical}</span>`;
+
+  // 연도 탭 생성
+  document.getElementById('yearTabs').innerHTML = PANEL_YEARS.map(y =>
+    `<button class="year-tab${y===year?' active':''}" data-year="${y}" onclick="setPanelYear(this)">${y}</button>`
+  ).join('');
+
   document.getElementById('overlay').classList.add('open');
   document.getElementById('panel').classList.add('open');
+  _renderPanel();
+}
 
-  let html = `<p style="font-size:11px;color:var(--muted);margin-bottom:1rem;font-family:'DM Mono',monospace">${year}년 월별 집행 현황</p>`;
+function setPanelYear(btn) {
+  document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  _pYear = +btn.dataset.year;
+  _renderPanel();
+}
+
+function _renderPanel() {
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth(); // 0-indexed
+
+  let html = '<table class="mo-table"><thead><tr>' +
+    '<th>월</th><th>TV / 케이블</th><th>유튜브</th>' +
+    '</tr></thead><tbody>';
+
   MONTHS_KR.forEach((mo, mi) => {
-    const d = getData(adv, year, mi);
-    const dim = DAYS_IN_MONTH[mi];
-    const isCur = mi === month;
-    html += `<div class="mo-card" style="${isCur?'border-color:#999':''}">`;
-    html += `<div class="mo-head${isCur?' cur':''}"><span>${mo}</span>${isCur?'<span style="font-size:10px;color:var(--muted);font-family:DM Mono,monospace">현재 월</span>':''}</div>`;
-    html += `<div class="mo-body">`;
-    [['tv','TV','bar-tv',d.tv],['yt','유튜브','bar-yt',d.yt]].forEach(([k,label,barCls,periods]) => {
-      const str = fmtPeriods(periods, mi);
-      html += `<div class="mo-row"><div class="mo-label">${label}</div><div class="gantt-wrap">`;
-      periods.forEach(p => {
-        const l = ((p.s-1)/dim*100).toFixed(1);
-        const w = ((p.e-p.s+1)/dim*100).toFixed(1);
-        html += `<div class="gantt-bar ${barCls}" style="left:${l}%;width:${w}%"></div>`;
-      });
-      html += `</div><div class="mo-dates">${str||'—'}</div></div>`;
-    });
-    html += `</div></div>`;
+    const isFuture = _pYear > todayYear || (_pYear === todayYear && mi > todayMonth);
+    const d = getData(_pAdv, _pYear, mi);
+    const tvStr = fmtPeriods(d.tv, mi);
+    const ytStr = fmtPeriods(d.yt, mi);
+    html += `<tr${isFuture ? ' class="mo-row-future"' : ''}>`;
+    html += `<td class="mo-month">${mo}</td>`;
+    html += `<td class="mo-cell">${tvStr
+      ? `<span class="mo-tag mo-tag-tv">${tvStr}</span>`
+      : '<span class="mo-dash">—</span>'}</td>`;
+    html += `<td class="mo-cell">${ytStr
+      ? `<span class="mo-tag mo-tag-yt">${ytStr}</span>`
+      : '<span class="mo-dash">—</span>'}</td>`;
+    html += '</tr>';
   });
+
+  html += '</tbody></table>';
   document.getElementById('panelBody').innerHTML = html;
 }
 
