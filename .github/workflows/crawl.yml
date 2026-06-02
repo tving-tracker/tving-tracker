@@ -1,9 +1,7 @@
 name: Daily Ad Crawl
 
 on:
-  schedule:
-    - cron: "0 16 * * *"   # 01:00 KST (UTC+9) = 16:00 UTC
-  workflow_dispatch:         # 수동 실행 버튼
+  workflow_dispatch:  # 수동 실행 버튼만
 
 jobs:
   crawl:

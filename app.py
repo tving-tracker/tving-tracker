@@ -1,7 +1,10 @@
+import base64
 import json
+from datetime import datetime
+from pathlib import Path
+
 import streamlit as st
 import streamlit.components.v1 as components
-from pathlib import Path
 
 import db
 
@@ -12,7 +15,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Hide Streamlit chrome so the HTML fills the frame cleanly
 st.markdown("""
 <style>
 #MainMenu, header, footer { display: none !important; }
@@ -22,43 +24,73 @@ section[data-testid="stSidebar"] > div { padding-top: 1rem; }
 """, unsafe_allow_html=True)
 
 
-# ── Sidebar: crawl status + manual refresh ───────────────────────────────────
+def _commit_db_to_github() -> bool:
+    """DB를 GitHub API로 커밋. GITHUB_TOKEN 시크릿이 없으면 False 반환."""
+    try:
+        import requests
+        token = st.secrets.get("GITHUB_TOKEN", "")
+        if not token:
+            return False
+        owner = st.secrets.get("GITHUB_OWNER", "tving-tracker")
+        repo  = st.secrets.get("GITHUB_REPO",  "tving-tracker")
+        url   = f"https://api.github.com/repos/{owner}/{repo}/contents/data/tracker.db"
+        hdrs  = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+        with open(db.DB_PATH, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+
+        sha = requests.get(url, headers=hdrs, timeout=10).json().get("sha", "")
+        requests.put(url, headers=hdrs, timeout=30, json={
+            "message": f"chore: sync crawl {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "content": content,
+            "sha": sha,
+            "committer": {"name": "TVING Tracker", "email": "tving-tracker@noreply.github.com"},
+        })
+        return True
+    except Exception:
+        return False
+
+
+# ── Sync trigger (query param ?sync=1) ────────────────────────────────────────
+if st.query_params.get("sync") == "1":
+    st.query_params.clear()
+    with st.spinner("크롤링 중... (1~3분 소요)"):
+        try:
+            from crawl import run_all
+            count = run_all()
+            committed = _commit_db_to_github()
+            msg = f"완료: {count}건 저장" + (" · GitHub 반영됨" if committed else "")
+            st.session_state["_sync_msg"] = ("ok", msg)
+        except Exception as e:
+            st.session_state["_sync_msg"] = ("err", f"오류: {e}")
+    st.rerun()
+
+sync_message = ""
+if "_sync_msg" in st.session_state:
+    kind, sync_message = st.session_state.pop("_sync_msg")
+
+
+# ── Sidebar (정보 표시용) ──────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📺 TVING 트래커")
     st.divider()
-
     last = db.get_last_crawl()
     if last:
         st.success(f"마지막 업데이트\n**{last}**")
     else:
-        st.warning("크롤 데이터 없음\n샘플 데이터로 표시 중")
-
-    if st.button("🔄 지금 크롤링", use_container_width=True):
-        with st.spinner("크롤링 중... (1~3분 소요)"):
-            try:
-                from crawl import run_all
-                count = run_all()
-                st.success(f"완료: {count}건 저장")
-                st.rerun()
-            except Exception as e:
-                st.error(f"오류: {e}")
-
+        st.warning("크롤 데이터 없음")
     st.divider()
     st.caption("크롤링 소스")
     st.markdown("""
 - 📺 **TVCF** — TV/케이블
-- 🎥 **Google Ads Transparency** — 유튜브
-- 📘 **Meta Ad Library** — FB/IG
-
-Meta 크롤링은 `META_ACCESS_TOKEN`
-환경변수 설정 필요.
+- 🎥 **Google Ads** — 유튜브
 """)
-    st.caption("매일 01:00 KST 자동 실행 (GitHub Actions)")
+    st.caption("우측 상단 Sync 버튼으로 수동 크롤링")
 
 
-# ── Load data from DB and inject into HTML template ──────────────────────────
-periods = db.get_periods()
-coverage = db.get_coverage()
+# ── Load data & render HTML ───────────────────────────────────────────────────
+periods      = db.get_periods()
+coverage     = db.get_coverage()
 last_crawled = db.get_last_crawl()
 
 template_path = Path(__file__).parent / "template.html"
@@ -76,6 +108,9 @@ html = html.replace(
     'const CRAWL_COVERAGE = {}; // __TVING_COVERAGE_PLACEHOLDER__',
     f'const CRAWL_COVERAGE = {json.dumps(coverage, ensure_ascii=False)};'
 )
+html = html.replace(
+    'const SYNC_MESSAGE = ""; // __TVING_SYNC_MESSAGE__',
+    f'const SYNC_MESSAGE = {json.dumps(sync_message)};'
+)
 
-# Render the full HTML app inside Streamlit
 components.html(html, height=920, scrolling=True)
