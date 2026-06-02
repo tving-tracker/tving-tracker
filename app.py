@@ -77,16 +77,22 @@ if st.query_params.get("sync") == "1":
             yt_count = run_all(platforms=["yt"])
             st.write(f"유튜브 완료: {yt_count}건")
 
+            total = tv_count + yt_count
             committed = _commit_db_to_github()
-            label = f"완료: {tv_count + yt_count}건 저장" + (" · GitHub 반영됨" if committed else "")
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            label = f"완료: {total}건 저장 ({now_str})" + (" · GitHub 반영됨" if committed else "")
             status.update(label=label, state="complete")
             st.session_state["_sync_msg"] = ("ok", label)
+            st.session_state["_sync_time"] = now_str
         except Exception as e:
+            import traceback
             status.update(label=f"오류: {e}", state="error")
+            st.write(traceback.format_exc())
             st.session_state["_sync_msg"] = ("err", f"오류: {e}")
     st.rerun()
 
 sync_message = ""
+sync_crawled_at = st.session_state.pop("_sync_time", "")
 if "_sync_msg" in st.session_state:
     kind, sync_message = st.session_state.pop("_sync_msg")
 
@@ -95,7 +101,7 @@ if "_sync_msg" in st.session_state:
 with st.sidebar:
     st.markdown("## 📺 TVING 트래커")
     st.divider()
-    last = db.get_last_crawl()
+    last = sync_crawled_at or db.get_last_crawl()
     if last:
         st.success(f"마지막 업데이트\n**{last}**")
     else:
@@ -112,7 +118,7 @@ with st.sidebar:
 # ── Load data & render HTML ───────────────────────────────────────────────────
 periods      = db.get_periods()
 coverage     = db.get_coverage()
-last_crawled = db.get_last_crawl()
+last_crawled = sync_crawled_at or db.get_last_crawl()
 
 template_path = Path(__file__).parent / "template.html"
 html = template_path.read_text(encoding="utf-8")
