@@ -1,5 +1,7 @@
 import base64
 import json
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -7,6 +9,16 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 import db
+
+# Playwright 브라우저 자동 설치 (Streamlit Cloud 초기 실행 시)
+@st.cache_resource(show_spinner=False)
+def _install_playwright():
+    subprocess.run(
+        [sys.executable, "-m", "playwright", "install", "chromium", "--with-deps"],
+        capture_output=True,
+    )
+
+_install_playwright()
 
 st.set_page_config(
     page_title="TVING · 광고주 매체 집행 트래커",

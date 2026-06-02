@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 TRANSPARENCY_URL = "https://adstransparency.google.com/?region=KR"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
       "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
-N_THREADS = 4   # 독립 브라우저 4개
+N_THREADS = 8   # 독립 브라우저 8개
 
 
 class GoogleAdsCrawler:
@@ -93,7 +93,7 @@ def _crawl_one(ctx, advertiser: str, year: int,
     try:
         page.goto(TRANSPARENCY_URL, wait_until="networkidle", timeout=25000)
         page.locator("input").first.fill(advertiser)
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(900)
 
         # 광고주 드롭다운 클릭 (이름 유사도 기준)
         clicked = False
@@ -120,7 +120,7 @@ def _crawl_one(ctx, advertiser: str, year: int,
             page.close()
             return []
 
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(1200)
 
         body_text = page.inner_text("body")
         if _ad_count(body_text) == 0:
