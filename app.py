@@ -66,14 +66,23 @@ def _commit_db_to_github() -> bool:
 # ── Sync trigger (query param ?sync=1) ────────────────────────────────────────
 if st.query_params.get("sync") == "1":
     st.query_params.clear()
-    with st.spinner("크롤링 중... (1~3분 소요)"):
+    from crawl import run_all
+    with st.status("크롤링 중...", expanded=True) as status:
         try:
-            from crawl import run_all
-            count = run_all()
+            st.write("📺 TVCF (TV/케이블) 크롤링 중...")
+            tv_count = run_all(platforms=["tv"])
+            st.write(f"TV 완료: {tv_count}건")
+
+            st.write("🎥 Google Ads (유튜브) 크롤링 중... (약 2~3분)")
+            yt_count = run_all(platforms=["yt"])
+            st.write(f"유튜브 완료: {yt_count}건")
+
             committed = _commit_db_to_github()
-            msg = f"완료: {count}건 저장" + (" · GitHub 반영됨" if committed else "")
-            st.session_state["_sync_msg"] = ("ok", msg)
+            label = f"완료: {tv_count + yt_count}건 저장" + (" · GitHub 반영됨" if committed else "")
+            status.update(label=label, state="complete")
+            st.session_state["_sync_msg"] = ("ok", label)
         except Exception as e:
+            status.update(label=f"오류: {e}", state="error")
             st.session_state["_sync_msg"] = ("err", f"오류: {e}")
     st.rerun()
 
