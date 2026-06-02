@@ -164,14 +164,6 @@ def _clip(s: date, e: date, m_start: date, m_end: date) -> list[dict]:
 
 
 def _merge_periods(periods: list[dict]) -> list[dict]:
-    if not periods:
-        return []
-    uniq = {(p["s"], p["e"]) for p in periods}
-    sorted_p = sorted(uniq, key=lambda x: x[0])
-    merged = [{"s": sorted_p[0][0], "e": sorted_p[0][1]}]
-    for s, e in sorted_p[1:]:
-        if s <= merged[-1]["e"] + 1:
-            merged[-1]["e"] = max(merged[-1]["e"], e)
-        else:
-            merged.append({"s": s, "e": e})
-    return merged
+    # 라이브 날짜 기준: 중복 제거 후 날짜순 정렬만 (인접 날짜 병합 없음)
+    uniq = sorted({(p["s"], p["e"]) for p in periods}, key=lambda x: x[0])
+    return [{"s": s, "e": e} for s, e in uniq]
